@@ -1,0 +1,51 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+spring:
+  application:
+    name: workos-server
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:workos}
+    username: ${DB_USERNAME:workos}
+    password: ${DB_PASSWORD:workos}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+
+  # 数据库统一存 UTC 时间点；业务日期按 settings.timezone 计算
+  jackson:
+    time-zone: UTC
+    default-property-inclusion: non_null
+
+  mvc:
+    problemdetails:
+      enabled: false
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: ""
+      logic-delete-value: ""
+      logic-not-delete-value: ""
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+workos:
+  cors:
+    # 生产走 Nginx 同域反代时不需要 CORS；开发期放行任意本地端口
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:[*],http://127.0.0.1:[*]}
+  auth:
+    # 本机访问免登录；非本机访问必须登录
+    allow-localhost-without-login: true
+  # MVP 固定日界线为 0 点（自然日），见 PRD V1.3.5
+  day-boundary-hour: 0

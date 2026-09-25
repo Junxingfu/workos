@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: workos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: workos
+      POSTGRES_USER: workos
+      POSTGRES_PASSWORD: workos
+      TZ: UTC
+    ports:
+      - "5432:5432"
+    volumes:
+      - workos-pgdata:/var/lib/postgresql/data
+      - ./deploy/db/01-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workos -d workos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  workos-pgdata:

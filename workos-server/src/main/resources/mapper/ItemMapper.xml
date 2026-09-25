@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workos.item.data.mapper.ItemMapper">
+
+    <sql id="allColumns">
+        id, project_id, title, description, item_type, status, priority,
+        planned_date, plan_rank, due_at, next_follow_up_at,
+        waiting_for, waiting_since, waiting_expected_at, related_person,
+        completed_at, cancelled_at, source, created_at, updated_at, version
+    </sql>
+
+    <!-- ① 今日计划 -->
+    <select id="selectPlan" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE planned_date = #{date}
+          AND status NOT IN ('DONE', 'CANCELLED')
+        ORDER BY plan_rank ASC NULLS LAST, id ASC
+    </select>
+
+    <!-- ② 逾期：只统计 TODO / DOING；已在别人手里的用"待跟进"表达 -->
+    <select id="selectOverdue" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE due_at &lt; #{todayStart}
+          AND status IN ('TODO', 'DOING')
+          AND planned_date IS NULL
+        ORDER BY due_at ASC
+    </select>
+
+    <!-- ③ 今日到期 -->
+    <select id="selectDueToday" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE due_at &gt;= #{todayStart}
+          AND due_at &lt; #{tomorrowStart}
+          AND status NOT IN ('DONE', 'CANCELLED', 'WAITING')
+          AND planned_date IS NULL
+        ORDER BY priority ASC, due_at ASC
+    </select>
+
+    <!-- ④ 待跟进：到点该主动推动（含等待到期） -->
+    <select id="selectFollowUpDue" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE next_follow_up_at &lt;= #{now}
+          AND status NOT IN ('DONE', 'CANCELLED')
+          AND planned_date IS NULL
+        ORDER BY next_follow_up_at ASC
+    </select>
+
+    <!-- ⑤ 等待中：还在别人手里，且未到跟进时间 -->
+    <select id="selectWaiting" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE status = 'WAITING'
+          AND (next_follow_up_at IS NULL OR next_follow_up_at &gt; #{now})
+          AND planned_date IS NULL
+        ORDER BY next_follow_up_at ASC NULLS LAST
+    </select>
+
+    <!-- ⑥ 待安排：入选只看用户的显式标记 -->
+    <select id="selectPendingDecision" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE planned_date IS NULL
+          AND status NOT IN ('DONE', 'CANCELLED', 'WAITING')
+          AND priority IN ('P0', 'P1')
+        <if test="excludedIds != null and excludedIds.size() > 0">
+            AND id NOT IN
+            <foreach collection="excludedIds" item="excludedId" open="(" separator="," close=")">
+                #{excludedId}
+            </foreach>
+        </if>
+        ORDER BY priority ASC, due_at ASC NULLS LAST, updated_at DESC
+        LIMIT 5
+    </select>
+
+    <select id="selectLastLogs" resultType="com.workos.item.model.dto.LastLogDTO">
+        SELECT DISTINCT ON (item_id) item_id, content, occurred_at
+        FROM work_log
+        WHERE item_id IN
+        <foreach collection="itemIds" item="itemId" open="(" separator="," close=")">
+            #{itemId}
+        </foreach>
+        ORDER BY item_id, occurred_at DESC
+    </select>
+
+    <select id="selectLastActivities" resultType="com.workos.item.model.dto.LastActivityDTO">
+        SELECT DISTINCT ON (item_id) item_id, activity_type, occurred_at
+        FROM item_activity
+        WHERE item_id IN
+        <foreach collection="itemIds" item="itemId" open="(" separator="," close=")">
+            #{itemId}
+        </foreach>
+        ORDER BY item_id, occurred_at DESC
+    </select>
+
+    <select id="countInbox" resultType="long">
+        SELECT COUNT(*) FROM item WHERE status = 'INBOX'
+    </select>
+
+    <!-- 项目维度：今天计划了做多少条 -->
+    <select id="selectProjectTodayCount" resultType="com.workos.project.model.dto.ProjectCountRowDTO">
+        SELECT project_id, COUNT(*) AS cnt
+        FROM item
+        WHERE planned_date = #{today}
+          AND status NOT IN ('DONE', 'CANCELLED')
+          AND project_id IN
+        <foreach collection="projectIds" item="projectId" open="(" separator="," close=")">
+            #{projectId}
+        </foreach>
+        GROUP BY project_id
+    </select>
+
+    <!-- 待跟进：已过期且未处理 -->
+    <select id="selectFollowUpOverdue" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE next_follow_up_at &lt; #{todayStart}
+          AND status NOT IN ('DONE', 'CANCELLED')
+        ORDER BY next_follow_up_at ASC
+    </select>
+
+    <!-- 待跟进：今天到点 -->
+    <select id="selectFollowUpToday" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE next_follow_up_at &gt;= #{todayStart}
+          AND next_follow_up_at &lt; #{todayEnd}
+          AND status NOT IN ('DONE', 'CANCELLED')
+        ORDER BY next_follow_up_at ASC
+    </select>
+
+    <!-- 待跟进：未来 7 天内 -->
+    <select id="selectFollowUpThisWeek" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE next_follow_up_at &gt;= #{from}
+          AND next_follow_up_at &lt; #{to}
+          AND status NOT IN ('DONE', 'CANCELLED')
+        ORDER BY next_follow_up_at ASC
+    </select>
+
+    <!-- 等待中：跟进工作台口径，不限计划日期 -->
+    <select id="selectWaitingAll" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE status = 'WAITING'
+          AND (next_follow_up_at IS NULL OR next_follow_up_at &gt; #{now})
+        ORDER BY waiting_since ASC NULLS LAST
+    </select>
+
+    <!-- 最近完成 -->
+    <select id="selectRecentlyDone" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE status = 'DONE'
+          AND completed_at &gt;= #{since}
+        ORDER BY completed_at DESC
+        LIMIT 20
+    </select>
+
+    <!-- 按等待对象聚合：谁在欠我东西 -->
+    <select id="selectWaitingByPerson" resultType="com.workos.followup.model.dto.PersonCountRowDTO">
+        SELECT waiting_for AS person, COUNT(*) AS cnt
+        FROM item
+        WHERE status = 'WAITING'
+          AND waiting_for IS NOT NULL
+          AND waiting_for &lt;&gt; ''
+        GROUP BY waiting_for
+        ORDER BY cnt DESC
+    </select>
+
+    <!-- 项目维度统计：状态计数 + 最近活动时间 -->
+    <select id="selectProjectStatRows" resultType="com.workos.project.model.dto.ProjectStatRowDTO">
+        SELECT project_id, status, COUNT(*) AS cnt, MAX(updated_at) AS last_at
+        FROM item
+        WHERE project_id IN
+        <foreach collection="projectIds" item="projectId" open="(" separator="," close=")">
+            #{projectId}
+        </foreach>
+        GROUP BY project_id, status
+    </select>
+
+    <select id="countUnclassified" resultType="long">
+        SELECT COUNT(*) FROM item
+        WHERE project_id IS NULL
+          AND status NOT IN ('DONE', 'CANCELLED')
+    </select>
+
+    <select id="countOldestInboxDays" resultType="long">
+        SELECT COALESCE(
+            MAX(FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - created_at)) / 86400)),
+            0)
+        FROM item
+        WHERE status = 'INBOX'
+    </select>
+
+    <!-- 先都收下：整理完成条件 = status != INBOX -->
+    <update id="acceptAllToTodo">
+        UPDATE item
+        SET status = 'TODO',
+            priority = 'P2',
+            updated_at = CURRENT_TIMESTAMP,
+            version = version + 1
+        WHERE status = 'INBOX'
+    </update>
+
+</mapper>

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workos.search.data.mapper.SearchMapper">
+
+    <!-- 三类事实合并检索；只返回展示需要的字段 -->
+    <sql id="unionAll">
+        <if test="item">
+            SELECT 'ITEM' AS hit_type, i.id AS id, i.title AS title,
+                   COALESCE(i.description, '') AS detail,
+                   i.project_id AS project_id, p.name AS project_name,
+                   i.updated_at AS updated_at
+            FROM item i
+            LEFT JOIN project p ON p.id = i.project_id
+            WHERE i.title ILIKE #{like} OR i.description ILIKE #{like}
+        </if>
+        <if test="item and project">UNION ALL</if>
+        <if test="project">
+            SELECT 'PROJECT' AS hit_type, pr.id AS id, pr.name AS title,
+                   COALESCE(pr.description, '') AS detail,
+                   NULL::BIGINT AS project_id, NULL::VARCHAR AS project_name,
+                   pr.updated_at AS updated_at
+            FROM project pr
+            WHERE pr.name ILIKE #{like} OR pr.description ILIKE #{like}
+        </if>
+        <if test="(item or project) and daily">UNION ALL</if>
+        <if test="daily">
+            SELECT 'DAILY' AS hit_type, d.id AS id, TO_CHAR(d.daily_date, 'YYYY-MM-DD') AS title,
+                   COALESCE(d.content, '') AS detail,
+                   NULL::BIGINT AS project_id, NULL::VARCHAR AS project_name,
+                   d.updated_at AS updated_at
+            FROM daily d
+            WHERE d.content ILIKE #{like}
+        </if>
+    </sql>
+
+    <select id="search" resultType="com.workos.search.model.dto.SearchHitDTO">
+        SELECT * FROM (
+            <include refid="unionAll"/>
+        ) hits
+        ORDER BY updated_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*) FROM (
+            <include refid="unionAll"/>
+        ) hits
+    </select>
+
+</mapper>

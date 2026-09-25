@@ -1,0 +1,351 @@
+/* ============================================================
+ * WorkOS 设计令牌（对齐 design.md §4~§10）
+ * 只用 4px 间距阶梯；颜色只表达语义；默认用 border，不用阴影
+ * ============================================================ */
+:root {
+  --bg-page: #f7f8fa;
+  --bg-surface: #ffffff;
+  --bg-hover: #fafbfc;
+  --bg-subtle: #f2f3f5;
+
+  --text-1: #1f2329;
+  --text-2: #646a73;
+  --text-3: #8f959e;
+
+  --border: #e5e6eb;
+  --border-strong: #d0d3d9;
+
+  --primary: #1677ff;
+  --success: #52c41a;
+  --warning: #faad14;
+  --danger: #ff4d4f;
+
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --sidebar-width: 208px;
+  --content-width: 1080px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text-1);
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 层级：字号建立层级，不靠装饰 ---------- */
+
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0;
+}
+
+.item-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.body-text {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.meta-text {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+/* ---------- 布局 ---------- */
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-6);
+}
+
+.app-content {
+  max-width: var(--content-width);
+  margin: 0 auto;
+}
+
+/* 页面头部：标题 + 必要上下文 + 最多 1 个主操作 */
+.page-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-height: 40px;
+  margin-bottom: var(--space-6);
+}
+
+.page-head__ctx {
+  display: flex;
+  gap: var(--space-3);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.page-head__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* 区块：Section + List，而不是 Card 套 Card */
+.section {
+  margin-bottom: var(--space-6);
+}
+
+.section__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.section__count {
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.section__hint {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* 分组标题：Overdue / Due today / Follow-up */
+.group-label {
+  font-size: 12px;
+  color: var(--text-2);
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+.group-label:first-child {
+  margin-top: 0;
+}
+
+/* ---------- 列表行（主体信息用 List，不用 Card Grid） ---------- */
+
+.list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.list-row {
+  padding: 10px var(--space-4);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.list-row:last-child {
+  border-bottom: none;
+}
+
+.list-row:hover {
+  background: var(--bg-hover);
+}
+
+.list-row--selected {
+  background: #f0f7ff;
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+
+.list-row--muted .list-row__title {
+  color: var(--text-3);
+}
+
+.list-row__line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.list-row__state {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+.list-row__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-row__sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.list-row__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* ---------- 优先级：小字着色，不做大色块 ---------- */
+
+.prio {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+
+.prio--P0 {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.prio--P1 {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.prio--P2 {
+  color: var(--text-2);
+}
+
+/* ---------- 行内完成入口：常显但视觉安静，hover 才升为主色 ---------- */
+
+.list-row__complete {
+  flex: none;
+  align-self: center;
+  color: var(--text-3);
+}
+
+.list-row__complete:hover {
+  color: var(--primary);
+}
+
+/* ---------- 次级标签：只用于语义强调，最多 2 个 ---------- */
+
+.label {
+  font-size: 12px;
+}
+
+.label--danger {
+  color: var(--danger);
+}
+
+.label--warning {
+  color: var(--warning);
+}
+
+.label--waiting {
+  color: #d48806;
+}
+
+.label--primary {
+  color: var(--primary);
+}
+
+/* ---------- 空状态：说明为什么空 + 现在做什么 ---------- */
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+}
+
+.empty-state__title {
+  font-size: 14px;
+  color: var(--text-2);
+  margin: 0 0 var(--space-1);
+}
+
+.empty-state__hint {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 0;
+}
+
+/* ---------- 描述型文本块（项目现状、日报） ---------- */
+
+.field {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.field:last-child {
+  border-bottom: none;
+}
+
+.field__label {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-bottom: 2px;
+}
+
+.field__value {
+  font-size: 14px;
+  color: var(--text-1);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.field--empty .field__value {
+  color: var(--text-3);
+}
+
+.field--focus .field__value {
+  font-weight: 500;
+}
+
+/* 单调统计：一行文字，不是 KPI 卡片 */
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}

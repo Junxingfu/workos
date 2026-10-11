@@ -96,4 +96,8 @@ public class ItemUpdateReq implements Serializable {
      */
     @Schema(title = "是否清空跟进时间")
     private Boolean clearNextFollowUp;
+
+    private Boolean clearProject;
+
+    private Boolean clearDueAt;
 }

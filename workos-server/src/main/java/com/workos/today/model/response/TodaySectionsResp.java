@@ -37,4 +37,7 @@ public class TodaySectionsResp implements Serializable {
 
     @Schema(title = "⑥ 待安排（决策队列，上限 5 条）")
     private List<ItemResp> suggested;
+
+    @Schema(title = "之前计划但还未完成的事项")
+    private List<ItemResp> carriedOverPlan;
 }

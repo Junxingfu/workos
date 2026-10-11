@@ -32,6 +32,8 @@ public interface ItemMapper extends BaseMapper<ItemPO> {
      */
     List<ItemPO> selectPlan(@Param("date") LocalDate date);
 
+    List<ItemPO> selectCarriedOverPlan(@Param("date") LocalDate date);
+
     /**
      * @Method selectOverdue
      * @Param [todayStart]
@@ -109,13 +111,6 @@ public interface ItemMapper extends BaseMapper<ItemPO> {
      * @Desc Inbox 里最老一条已经压了多少天
      */
     long countOldestInboxDays();
-
-    /**
-     * @Method acceptAllToTodo
-     * @Return int
-     * @Desc 先都收下：一次性设为 TODO / P2 / 无项目
-     */
-    int acceptAllToTodo();
 
     /**
      * @Method selectProjectStatRows

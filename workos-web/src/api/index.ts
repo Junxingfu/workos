@@ -17,16 +17,33 @@ import type {
   WorkLog
 } from '@/types'
 
+// 后端的 Long 序列化为字符串；ID 保留字符串，数量在请求边界转为数字。
+function numericPage<T>(page: BasePageResult<T>): BasePageResult<T> {
+  return { ...page, total: Number(page.total), pageNo: Number(page.pageNo), pageSize: Number(page.pageSize) }
+}
+function numericItem(item: Item): Item {
+  return { ...item, waitingDays: item.waitingDays == null ? null : Number(item.waitingDays) }
+}
+
 /* ---------------- Today ---------------- */
 
-export const fetchToday = (): Promise<TodayResp> => http.get('/today')
+export const fetchToday = async (): Promise<TodayResp> => {
+  const result = await http.get<TodayResp>('/today')
+  for (const key of Object.keys(result.sections) as Array<keyof TodayResp['sections']>) {
+    result.sections[key] = result.sections[key].map(numericItem)
+  }
+  return result
+}
 
 export const reorderPlan = (date: string, itemIds: string[]) =>
   http.post('/today/plan/reorder', { date, itemIds })
 
 /* ---------------- Inbox ---------------- */
 
-export const fetchInbox = (): Promise<InboxResp> => http.get('/inbox')
+export const fetchInbox = async (): Promise<InboxResp> => {
+  const result = await http.get<InboxResp>('/inbox')
+  return { ...result, total: Number(result.total), oldestDays: Number(result.oldestDays), records: result.records.map(numericItem) }
+}
 
 export const acceptAll = (itemIds?: string[]) =>
   http.post('/inbox/accept-all', itemIds?.length ? { itemIds } : {})
@@ -46,13 +63,15 @@ export interface ItemQuery {
   pageSize?: number
 }
 
-export const fetchItems = (params: ItemQuery): Promise<BasePageResult<Item>> =>
-  http.get('/items', { params })
+export const fetchItems = async (params: ItemQuery): Promise<BasePageResult<Item>> => {
+  const result = numericPage(await http.get<BasePageResult<Item>>('/items', { params }))
+  return { ...result, dataList: result.dataList.map(numericItem) }
+}
 
-export const fetchItem = (id: string): Promise<Item> => http.get(`/items/${id}`)
+export const fetchItem = async (id: string): Promise<Item> => numericItem(await http.get<Item>(`/items/${id}`))
 
-export const quickCapture = (content: string): Promise<string> =>
-  http.post('/items/quick-capture', { content })
+export const quickCapture = (content: string, destination: 'INBOX' | 'TODO' | 'TODAY' = 'INBOX'): Promise<string> =>
+  http.post('/items/quick-capture', { content, destination })
 
 export const createItem = (payload: Partial<Item> & { title: string }) =>
   http.post('/items', payload)
@@ -71,6 +90,8 @@ export const updateItem = (
     nextFollowUpAt?: string
     relatedPerson?: string
     clearNextFollowUp?: boolean
+    clearProject?: boolean
+    clearDueAt?: boolean
   }
 ): Promise<boolean> => http.put(`/items/${id}`, payload)
 
@@ -102,6 +123,9 @@ export const followUpAction = (
 export const planItem = (id: string, plannedDate: string, version?: number): Promise<Item> =>
   http.post(`/items/${id}/plan`, { plannedDate, version })
 
+export const planToday = (id: string, version: number): Promise<Item> =>
+  http.post(`/items/${id}/plan`, { version })
+
 export const unplanItem = (id: string): Promise<boolean> => http.delete(`/items/${id}/plan`)
 
 export const fetchActivities = (id: string): Promise<ItemActivity[]> =>
@@ -129,7 +153,7 @@ export const fetchProjects = (params: {
   keyword?: string
   pageNo?: number
   pageSize?: number
-}): Promise<BasePageResult<Project>> => http.get('/projects', { params })
+}): Promise<BasePageResult<Project>> => http.get<BasePageResult<Project>>('/projects', { params }).then(numericPage)
 
 export const createProject = (payload: { name: string; description?: string }): Promise<string> =>
   http.post('/projects', payload)
@@ -157,7 +181,7 @@ export const updateDaily = (date: string, content: string, version?: number): Pr
 
 export const generateDaily = (
   date: string
-): Promise<{ date: string; generatedContent: string; sourceWorkLogCount: number }> =>
+): Promise<{ date: string; generatedContent: string; sourceWorkLogCount: number; version: number }> =>
   http.post(`/dailies/${date}/generate`)
 
 export const applyGenerated = (date: string, content: string, version?: number): Promise<Daily> =>

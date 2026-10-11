@@ -4,18 +4,19 @@
 > 产品版本：MVP / PRD V1.3.5
 > 前端：Vue 3 + TypeScript + Vite + Ant Design Vue
 
-本文件是本仓库前端工作的最高优先级约束。详细规范在 design/ 目录下：
+本文件是本仓库前端工作的最高优先级约束。前端规范有两份形态，用哪份取决于你在做什么：
 
-| 文件 | 内容 |
+| 文件 | 内容 | 什么时候读 |
 |---|---|
-| design/DESIGN.md | 视觉语言：颜色、字号、间距、圆角、阴影、组件与页面结构 |
-| design/UX_RULES.md | 交互规则：三秒原则、上下文恢复、Inbox / Today / Project / Item 行为 |
-| design/VISUAL_REVIEW.md | 交付前自检清单与质量线 |
+| ../docs/archive/前端Agent规则.md | **Agent 执行规则**：硬约束（N1~N41）、契约、可直接跑的验收命令 | 写代码前先读这份，交付前按它自检 |
+| ../docs/archive/前端规范.md | **完整规范**：含每条规则的原因、设计判断依据、实现对照 | 需要做设计决策，或想知道「为什么这么定」时读 |
+
+两份文档放在 `docs/archive/`，**该目录存放的是前端设计资料，不等于「全部废弃」**——目录里的 `README.md` 标明了哪两份现行。同目录的 DESIGN.md / UX_RULES.md / VISUAL_REVIEW.md / 旧版-前端设计打包.md 是历史版本，内容已并入 `前端规范.md`，**不要作为依据**。
 
 冲突时的优先级：
 
 ```
-产品需求 > design/UX_RULES.md > design/DESIGN.md > 既有实现 > Agent 自由发挥
+产品需求 > ../docs/archive/前端规范.md > 既有实现 > Agent 自由发挥
 ```
 
 核心提醒：
@@ -92,7 +93,7 @@ WorkOS 是：
 * 新的 AI 功能
 * 新的复杂筛选体系
 
-如果 PRD / UX_RULES 没有要求：
+如果 PRD / `../docs/archive/前端规范.md` 没有要求：
 
 > **不要自行增加。**
 
@@ -190,12 +191,11 @@ WorkOS 首页应该回答：
 实现 UI 时，参考顺序：
 
 1. WorkOS PRD V1.3.5
-2. `design/UX_RULES.md`
-3. `design/DESIGN.md`
-4. `design/VISUAL_REVIEW.md`
-5. 当前已有组件和页面
-6. Ant Design Vue 官方能力
-7. Agent 自己的判断
+2. `../docs/archive/前端Agent规则.md`（执行规则）
+3. `../docs/archive/前端规范.md`（完整规范与依据）
+4. 当前已有组件和页面
+5. Ant Design Vue 官方能力
+6. Agent 自己的判断
 
 发生冲突时：
 
@@ -622,7 +622,7 @@ npm run build
 10. 检查大量数据
 11. 检查 Drawer
 12. 检查键盘操作
-13. 按 `VISUAL_REVIEW.md` 自检
+13. 按 `../docs/archive/前端规范.md` 第 8 节自检
 
 ---
 
@@ -687,4 +687,3 @@ WorkOS 不应该让用户感到：
 这就是前端设计的最终目标。
 
 ---
-

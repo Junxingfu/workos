@@ -15,7 +15,8 @@
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE planned_date = #{date}
-          AND status NOT IN ('DONE', 'CANCELLED')
+          AND item_type = 'TASK'
+          AND status IN ('TODO', 'DOING', 'WAITING')
         ORDER BY plan_rank ASC NULLS LAST, id ASC
     </select>
 
@@ -25,7 +26,7 @@
         FROM item
         WHERE due_at &lt; #{todayStart}
           AND status IN ('TODO', 'DOING')
-          AND planned_date IS NULL
+          AND item_type = 'TASK'
         ORDER BY due_at ASC
     </select>
 
@@ -35,8 +36,8 @@
         FROM item
         WHERE due_at &gt;= #{todayStart}
           AND due_at &lt; #{tomorrowStart}
-          AND status NOT IN ('DONE', 'CANCELLED', 'WAITING')
-          AND planned_date IS NULL
+          AND status IN ('TODO', 'DOING')
+          AND item_type = 'TASK'
         ORDER BY priority ASC, due_at ASC
     </select>
 
@@ -45,8 +46,8 @@
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE next_follow_up_at &lt;= #{now}
-          AND status NOT IN ('DONE', 'CANCELLED')
-          AND planned_date IS NULL
+          AND status IN ('TODO', 'DOING', 'WAITING')
+          AND item_type = 'TASK'
         ORDER BY next_follow_up_at ASC
     </select>
 
@@ -56,17 +57,17 @@
         FROM item
         WHERE status = 'WAITING'
           AND (next_follow_up_at IS NULL OR next_follow_up_at &gt; #{now})
-          AND planned_date IS NULL
+          AND item_type = 'TASK'
         ORDER BY next_follow_up_at ASC NULLS LAST
     </select>
 
-    <!-- ⑥ 待安排：入选只看用户的显式标记 -->
+    <!-- ⑥ 待安排：普通待办也可以选择今天做，按优先级排序 -->
     <select id="selectPendingDecision" resultType="com.workos.item.data.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE planned_date IS NULL
-          AND status NOT IN ('DONE', 'CANCELLED', 'WAITING')
-          AND priority IN ('P0', 'P1')
+          AND status IN ('TODO', 'DOING')
+          AND item_type = 'TASK'
         <if test="excludedIds != null and excludedIds.size() > 0">
             AND id NOT IN
             <foreach collection="excludedIds" item="excludedId" open="(" separator="," close=")">
@@ -75,6 +76,15 @@
         </if>
         ORDER BY priority ASC, due_at ASC NULLS LAST, updated_at DESC
         LIMIT 5
+    </select>
+
+    <select id="selectCarriedOverPlan" resultType="com.workos.item.data.entity.ItemPO">
+        SELECT <include refid="allColumns"/>
+        FROM item
+        WHERE planned_date &lt; #{date}
+          AND item_type = 'TASK'
+          AND status IN ('TODO', 'DOING', 'WAITING')
+        ORDER BY planned_date ASC, plan_rank ASC NULLS LAST, id ASC
     </select>
 
     <select id="selectLastLogs" resultType="com.workos.item.model.dto.LastLogDTO">
@@ -197,15 +207,5 @@
         FROM item
         WHERE status = 'INBOX'
     </select>
-
-    <!-- 先都收下：整理完成条件 = status != INBOX -->
-    <update id="acceptAllToTodo">
-        UPDATE item
-        SET status = 'TODO',
-            priority = 'P2',
-            updated_at = CURRENT_TIMESTAMP,
-            version = version + 1
-        WHERE status = 'INBOX'
-    </update>
 
 </mapper>

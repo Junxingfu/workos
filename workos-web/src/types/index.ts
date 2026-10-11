@@ -3,6 +3,20 @@ export type ItemStatus = 'INBOX' | 'TODO' | 'DOING' | 'WAITING' | 'DONE' | 'CANC
 export type ItemPriority = 'P0' | 'P1' | 'P2' | 'P3'
 export type FollowUpOutcome = 'STILL_WAITING' | 'RESOLVED' | 'ABANDONED'
 
+/** ItemRow 行内可触发的动作 */
+export type ItemRowAction =
+  | 'open'
+  | 'accept'
+  | 'complete'
+  | 'start'
+  | 'resume'
+  | 'reopen'
+  | 'wait'
+  | 'followUp'
+  | 'planToday'
+  | 'planTomorrow'
+  | 'postpone'
+
 export interface ApiResponse<T> {
   code: number
   message: string
@@ -79,6 +93,7 @@ export interface TodaySections {
   followUp: Item[]
   waiting: Item[]
   suggested: Item[]
+  carriedOverPlan: Item[]
 }
 
 export interface TodayResp {
@@ -118,8 +133,11 @@ export interface Project {
   name: string
   description?: string | null
   status: 'ACTIVE' | 'ARCHIVED'
+  /** 列表接口直接返回的当前焦点 */
+  currentFocus?: string | null
   doingCount?: number | null
   waitingCount?: number | null
+  openCount?: number | null
   lastActivityAt?: string | null
   statistics?: ProjectStatistics
   context?: ProjectContext

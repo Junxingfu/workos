@@ -57,6 +57,7 @@ public class TodayServiceImpl implements TodayService {
         List<ItemPO> dueToday = distinct(itemMapper.selectDueToday(todayStart, tomorrowStart), used);
         List<ItemPO> followUp = distinct(itemMapper.selectFollowUpDue(now), used);
         List<ItemPO> waiting = distinct(itemMapper.selectWaiting(now), used);
+        List<ItemPO> carriedOver = distinct(itemMapper.selectCarriedOverPlan(today), used);
         List<ItemPO> suggested = distinct(itemMapper.selectPendingDecision(new ArrayList<>(used)), used);
 
         TodaySectionsResp sections = new TodaySectionsResp();
@@ -66,6 +67,7 @@ public class TodayServiceImpl implements TodayService {
         sections.setFollowUp(itemService.assembles(followUp));
         sections.setWaiting(itemService.assembles(waiting));
         sections.setSuggested(itemService.assembles(suggested));
+        sections.setCarriedOverPlan(itemService.assembles(carriedOver));
 
         TodaySummaryResp summary = new TodaySummaryResp();
         summary.setPlan(sections.getPlan().size());

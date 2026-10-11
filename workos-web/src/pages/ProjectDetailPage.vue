@@ -3,9 +3,20 @@ import { computed, onMounted, ref } from 'vue'
 import dayjs from 'dayjs'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { archiveProject, fail, fetchProject, restoreProject, updateProjectContext } from '@/api'
+import {
+  archiveProject,
+  fail,
+  fetchItems,
+  fetchProject,
+  restoreProject,
+  transition,
+  updateProjectContext
+} from '@/api'
+import ItemCard from '@/components/ItemCard.vue'
+import ItemDrawer from '@/components/ItemDrawer.vue'
 import PageHeader from '@/components/PageHeader.vue'
-import type { Project } from '@/types'
+import { useListActions } from '@/composables/useListActions'
+import type { Item, ItemRowAction, Project } from '@/types'
 
 /**
  * 项目详情：10 秒恢复项目上下文（design.md §33~§35）
@@ -17,6 +28,13 @@ const project = ref<Project | null>(null)
 const loading = ref(false)
 const saving = ref(false)
 const editing = ref(false)
+const archiving = ref(false)
+const doingItems = ref<Item[]>([])
+const todoItems = ref<Item[]>([])
+const waitingItems = ref<Item[]>([])
+const drawerOpen = ref(false)
+const activeId = ref<string | null>(null)
+const drawerIntent = ref<'wait' | 'followUp' | null>(null)
 
 const form = ref({
   goal: '',
@@ -32,12 +50,12 @@ const form = ref({
 /** 视觉优先级：当前重点 / 阻塞 / 下一步 最先看到 */
 const primaryFields = computed(() => [
   { key: 'currentFocus', label: '当前重点', value: form.value.currentFocus },
-  { key: 'blocker', label: '当前阻塞', value: form.value.blocker },
+  { key: 'progressNote', label: '当前进展', value: form.value.progressNote },
   { key: 'nextAction', label: '下一步', value: form.value.nextAction }
 ])
 
 const secondaryFields = computed(() => [
-  { key: 'progressNote', label: '当前进展', value: form.value.progressNote },
+  { key: 'blocker', label: '当前阻塞', value: form.value.blocker },
   { key: 'goal', label: '当前目标', value: form.value.goal }
 ])
 
@@ -59,7 +77,7 @@ async function load() {
     const detail = await fetchProject(String(route.params.id))
     project.value = detail
     const context = detail.context
-    form.value = {
+    if (!editing.value) form.value = {
       goal: context?.goal ?? '',
       currentFocus: context?.currentFocus ?? '',
       progressNote: context?.progressNote ?? '',
@@ -69,10 +87,66 @@ async function load() {
       keyLinks: context?.keyLinks ?? '',
       notesMarkdown: context?.notesMarkdown ?? ''
     }
+
+    const projectId = String(route.params.id)
+    const [doing, waiting, todo] = await Promise.all([
+      fetchItems({ projectId, status: 'DOING', pageNo: 1, pageSize: 50 }),
+      fetchItems({ projectId, status: 'WAITING', pageNo: 1, pageSize: 50 }),
+      fetchItems({ projectId, status: 'TODO', pageNo: 1, pageSize: 50 })
+    ])
+    todoItems.value = todo.dataList ?? []
+    doingItems.value = doing.dataList ?? []
+    waitingItems.value = waiting.dataList ?? []
   } catch (e) {
     fail(e)
   } finally {
     loading.value = false
+  }
+}
+
+/** 项目内的进行中 / 等待中事项，可以直接在行内推进 */
+const { run, pendingActionFor } = useListActions(
+  () => [...todoItems.value, ...doingItems.value, ...waitingItems.value],
+  load,
+  { onOpen: (item) => openItem(item, null) }
+)
+
+function openItem(item: Item, intent: 'wait' | 'followUp' | null = null) {
+  activeId.value = item.id
+  drawerIntent.value = intent
+  drawerOpen.value = true
+}
+
+function onItemAction(action: ItemRowAction, item: Item) {
+  switch (action) {
+    case 'open':
+      return openItem(item, null)
+    case 'complete':
+      return run(
+        item,
+        'complete',
+        () => transition(item.id, { toStatus: 'DONE', version: item.version }),
+        { tip: '已完成' }
+      )
+    case 'start':
+    case 'resume':
+      return run(
+        item,
+        action,
+        () => transition(item.id, { toStatus: 'DOING', version: item.version }),
+        { tip: action === 'resume' ? '已恢复处理' : '已开始' }
+      )
+    case 'reopen':
+      return run(
+        item,
+        'reopen',
+        () => transition(item.id, { toStatus: 'TODO', version: item.version }),
+        { tip: '已重新打开' }
+      )
+    case 'wait':
+      return openItem(item, 'wait')
+    case 'followUp':
+      return openItem(item, 'followUp')
   }
 }
 
@@ -93,6 +167,7 @@ async function save() {
 
 async function toggleArchive() {
   if (!project.value) return
+  archiving.value = true
   try {
     if (project.value.status === 'ARCHIVED') {
       await restoreProject(project.value.id)
@@ -104,6 +179,8 @@ async function toggleArchive() {
     await load()
   } catch (e) {
     fail(e)
+  } finally {
+    archiving.value = false
   }
 }
 
@@ -114,10 +191,7 @@ onMounted(load)
   <div>
     <PageHeader
       :title="project?.name ?? ''"
-      :context="[
-        project?.status === 'ARCHIVED' ? '已归档' : '进行中',
-        ...(staleText ? [staleText] : [])
-      ]"
+      :sub="[project?.status === 'ARCHIVED' ? '已归档' : '进行中', staleText].filter(Boolean).join(' · ')"
     >
       <template #actions>
         <a-button size="small" type="text" @click="router.push('/projects')">返回项目</a-button>
@@ -129,15 +203,8 @@ onMounted(load)
       </template>
     </PageHeader>
 
-    <a-spin :spinning="loading">
-      <!-- 单调事实行，不做 KPI 卡片 -->
-      <div class="facts" style="margin-bottom: 24px">
-        <span>待办 {{ project?.statistics?.todo ?? 0 }}</span>
-        <span>进行中 {{ project?.statistics?.doing ?? 0 }}</span>
-        <span>等待 {{ project?.statistics?.waiting ?? 0 }}</span>
-        <span>已完成 {{ project?.statistics?.done ?? 0 }}</span>
-      </div>
-
+    <!-- 首屏加载才整块 loading；保存现状和归档不再让页面变灰 -->
+    <a-spin :spinning="loading && !project">
       <section class="section">
         <div class="section__head">
           <h2 class="section-title">项目现状</h2>
@@ -227,17 +294,70 @@ onMounted(load)
             <a-textarea v-model:value="form.notesMarkdown" :rows="4" />
           </a-form-item>
         </a-form>
+
       </section>
 
       <section class="section">
         <div class="section__head">
-          <a-button size="small" type="text" @click="toggleArchive">
+          <h2 class="section-title">待办</h2>
+          <a-button class="section__count" size="small" type="link" @click="router.push({ path: '/items', query: { projectId: project?.id } })">查看项目全部事项</a-button>
+        </div>
+        <div v-if="todoItems.length" class="list">
+          <ItemCard v-for="item in todoItems" :key="item.id" :item="item" :pending-action="pendingActionFor(item)" @action="onItemAction" />
+        </div>
+        <p v-else class="meta-text">当前没有待办；收下并归属到本项目的事项会出现在这里。</p>
+      </section>
+
+      <!-- 现状之后直接进入这个项目正在做的事（前端规范.md §7.5） -->
+      <section v-if="doingItems.length" class="section">
+        <div class="section__head">
+          <h2 class="section-title">进行中</h2>
+          <span class="section__count">{{ doingItems.length }}</span>
+        </div>
+        <div class="list">
+          <ItemCard
+            v-for="item in doingItems"
+            :key="item.id"
+            :item="item"
+            :pending-action="pendingActionFor(item)"
+            @action="onItemAction"
+          />
+        </div>
+      </section>
+
+      <section v-if="waitingItems.length" class="section">
+        <div class="section__head">
+          <h2 class="section-title">等待中</h2>
+          <span class="section__count">{{ waitingItems.length }}</span>
+        </div>
+        <div class="list">
+          <ItemCard
+            v-for="item in waitingItems"
+            :key="item.id"
+            :item="item"
+            :pending-action="pendingActionFor(item)"
+            @action="onItemAction"
+          />
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section__head">
+          <a-button size="small" type="text" :loading="archiving" @click="toggleArchive">
             {{ project?.status === 'ARCHIVED' ? '恢复项目' : '归档项目' }}
           </a-button>
           <span class="section__hint">归档是业务状态，不做物理删除</span>
         </div>
       </section>
     </a-spin>
+
+    <ItemDrawer
+      v-model:open="drawerOpen"
+      :item-id="activeId"
+      :intent="drawerIntent"
+      @changed="load"
+      @clear-intent="drawerIntent = null"
+    />
   </div>
 </template>
 

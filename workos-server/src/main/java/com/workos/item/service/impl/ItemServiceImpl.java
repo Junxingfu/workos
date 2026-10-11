@@ -122,7 +122,13 @@ public class ItemServiceImpl implements ItemService {
     public Long quickCapture(ItemQuickCaptureReq req) {
         ItemDTO dto = itemConverter.toDTO(req);
         dto.setItemType(ItemType.TASK);
-        dto.setStatus(ItemStatus.INBOX);
+        ItemQuickCaptureReq.Destination destination = Objects.requireNonNullElse(
+                req.getDestination(), ItemQuickCaptureReq.Destination.INBOX);
+        dto.setStatus(destination == ItemQuickCaptureReq.Destination.INBOX ? ItemStatus.INBOX : ItemStatus.TODO);
+        if (destination == ItemQuickCaptureReq.Destination.TODAY) {
+            dto.setPlannedDate(timeZoneHolder.today());
+            dto.setPlanRank(nextPlanRank(timeZoneHolder.today()));
+        }
         dto.setPriority(ItemPriority.P2);
         dto.setSource(ItemSource.QUICK_CAPTURE);
         return save(dto, ActivityType.CREATED, "快速记录");
@@ -155,7 +161,7 @@ public class ItemServiceImpl implements ItemService {
                 .eq(Objects.nonNull(req.getProjectId()), ItemPO::getProjectId, req.getProjectId())
                 .eq(Objects.nonNull(req.getType()), ItemPO::getItemType, req.getType())
                 .eq(Objects.nonNull(req.getPriority()), ItemPO::getPriority, req.getPriority())
-                .eq(Boolean.TRUE.equals(req.getUnclassified()), ItemPO::getProjectId, null);
+                .isNull(Boolean.TRUE.equals(req.getUnclassified()), ItemPO::getProjectId);
         if (Objects.nonNull(req.getStatus())) {
             wrapper.eq(ItemPO::getStatus, req.getStatus());
         } else {
@@ -177,7 +183,7 @@ public class ItemServiceImpl implements ItemService {
             String keyword = req.getKeyword().trim();
             wrapper.and(w -> w.like(ItemPO::getTitle, keyword).or().like(ItemPO::getDescription, keyword));
         }
-        wrapper.orderByDesc(ItemPO::getUpdatedAt);
+        wrapper.orderByDesc(ItemPO::getUpdatedAt).orderByDesc(ItemPO::getId);
         Page<ItemPO> page = itemMapper.selectPage(new Page<>(req.getPageNo(), req.getPageSize()), wrapper);
         return new BasePageResult<>(assembles(page.getRecords()),
                 page.getCurrent(), page.getSize(), page.getTotal());
@@ -195,6 +201,8 @@ public class ItemServiceImpl implements ItemService {
         ItemPO po = requireItem(id);
         checkVersion(po.getVersion(), req.getVersion());
         List<String> changes = new ArrayList<>();
+        if (Boolean.TRUE.equals(req.getClearProject())) changes.add("清空项目");
+        if (Boolean.TRUE.equals(req.getClearDueAt())) changes.add("清空截止时间");
         if (Objects.nonNull(req.getTitle()) && !Objects.equals(req.getTitle(), po.getTitle())) {
             changes.add("标题：" + req.getTitle());
             po.setTitle(req.getTitle());
@@ -244,6 +252,13 @@ public class ItemServiceImpl implements ItemService {
             return Boolean.TRUE;
         }
         updateItem(po, req.getVersion());
+        if (Boolean.TRUE.equals(req.getClearProject()) || Boolean.TRUE.equals(req.getClearDueAt())) {
+            clearItemFields(po.getId(), po.getVersion(), wrapper -> {
+                if (Boolean.TRUE.equals(req.getClearProject())) wrapper.set(ItemPO::getProjectId, null);
+                if (Boolean.TRUE.equals(req.getClearDueAt())) wrapper.set(ItemPO::getDueAt, null);
+            });
+            po = requireItem(id);
+        }
         if (Boolean.TRUE.equals(req.getClearNextFollowUp())) {
             clearItemFields(po.getId(), po.getVersion(),
                     wrapper -> wrapper.set(ItemPO::getNextFollowUpAt, null));
@@ -266,7 +281,7 @@ public class ItemServiceImpl implements ItemService {
         checkVersion(po.getVersion(), req.getVersion());
         ItemStatus from = po.getStatus();
         ItemStatus to = req.getToStatus();
-        if (!stateMachine.canTransition(from, to)) {
+        if (!stateMachine.allowedTargets(from, po.getItemType()).contains(to)) {
             throw new BizException(ResponseCode.ITEM_INVALID_TRANSITION,
                     String.format("不允许从 %s 变更为 %s", from, to));
         }
@@ -303,7 +318,7 @@ public class ItemServiceImpl implements ItemService {
             }
         }
         updateItem(po, req.getVersion());
-        if (leavingWaiting || to == ItemStatus.TODO) {
+        if (leavingWaiting || to == ItemStatus.TODO || to == ItemStatus.INBOX) {
             clearItemFields(po.getId(), po.getVersion(), wrapper -> {
                 if (leavingWaiting) {
                     // 退出等待 = 这段等待结束：等待信息与跟进时间一起收口，
@@ -313,7 +328,7 @@ public class ItemServiceImpl implements ItemService {
                             .set(ItemPO::getWaitingExpectedAt, null)
                             .set(ItemPO::getNextFollowUpAt, null);
                 }
-                if (to == ItemStatus.TODO) {
+                if (to == ItemStatus.TODO || to == ItemStatus.INBOX) {
                     wrapper.set(ItemPO::getCompletedAt, null)
                             .set(ItemPO::getCancelledAt, null);
                 }
@@ -357,6 +372,12 @@ public class ItemServiceImpl implements ItemService {
         writeWorkLog(po, StringUtils.hasText(req.getNote()) ? req.getNote() : defaultResolvedText(po));
         ItemStatus to = Objects.requireNonNullElse(req.getToStatus(),
                 po.getStatus() == ItemStatus.WAITING ? ItemStatus.DOING : po.getStatus());
+        clearItemFields(po.getId(), po.getVersion(),
+                wrapper -> wrapper.set(ItemPO::getNextFollowUpAt, null));
+        if (to == po.getStatus()) {
+            recordActivity(po.getId(), ActivityType.FIELD_CHANGED, null, null, "跟进完成", "USER");
+            return detail(id);
+        }
         ItemTransitionReq transitionReq = new ItemTransitionReq();
         transitionReq.setToStatus(to);
         transitionReq.setRemark("跟进完成：" + req.getNote());
@@ -374,11 +395,12 @@ public class ItemServiceImpl implements ItemService {
     public ItemResp plan(Long id, ItemPlanReq req) {
         ItemPO po = requireItem(id);
         checkVersion(po.getVersion(), req.getVersion());
+        if (req.getPlannedDate() == null) req.setPlannedDate(timeZoneHolder.today());
         if (req.getPlannedDate().isBefore(timeZoneHolder.today())) {
             throw new BizException(ResponseCode.PARAM_ERROR, "计划日期不能早于今天");
         }
-        if (!stateMachine.canTransition(po.getStatus(), ItemStatus.TODO)
-                && po.getStatus() != ItemStatus.TODO) {
+        if (po.getItemType() != ItemType.TASK ||
+                (po.getStatus() != ItemStatus.TODO && po.getStatus() != ItemStatus.DOING && po.getStatus() != ItemStatus.WAITING)) {
             throw new BizException(ResponseCode.ITEM_INVALID_TRANSITION, "当前状态不能加入计划");
         }
         po.setPlannedDate(req.getPlannedDate());
@@ -587,11 +609,13 @@ public class ItemServiceImpl implements ItemService {
         }
         setter.accept(wrapper);
         wrapper.set(ItemPO::getUpdatedAt, timeZoneHolder.now());
-        itemMapper.update(null, wrapper);
+        if (itemMapper.update(null, wrapper) == 0) {
+            throw new BizException(ResponseCode.VERSION_CONFLICT);
+        }
     }
 
     private Set<ItemStatus> allowedTransitions(ItemPO po) {
-        return stateMachine.allowedTargets(po.getStatus()).stream()
+        return stateMachine.allowedTargets(po.getStatus(), po.getItemType()).stream()
                 .filter(target -> typeCapability.allows(target, po.getItemType()))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }

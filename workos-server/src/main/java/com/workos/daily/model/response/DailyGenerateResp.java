@@ -26,4 +26,6 @@ public class DailyGenerateResp implements Serializable {
 
     @Schema(title = "来源记录数")
     private Integer sourceWorkLogCount;
+
+    private Integer version;
 }

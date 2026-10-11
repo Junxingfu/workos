@@ -1,7 +1,6 @@
 package com.workos.item.model.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.io.Serial;
@@ -29,7 +28,6 @@ public class ItemPlanReq implements Serializable {
     /**
      * 计划日期
      */
-    @NotNull(message = "计划日期不能为空")
-    @Schema(title = "计划日期", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(title = "计划日期（不传则安排今天，按业务时区）")
     private LocalDate plannedDate;
 }

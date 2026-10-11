@@ -27,4 +27,11 @@ public class ItemQuickCaptureReq implements Serializable {
     @Size(max = 500, message = "内容长度不能超过500")
     @Schema(title = "记录内容", requiredMode = Schema.RequiredMode.REQUIRED)
     private String content;
+
+    /** 记录去向；今天的业务日期由后端计算。 */
+    private Destination destination = Destination.INBOX;
+
+    public enum Destination {
+        INBOX, TODO, TODAY
+    }
 }

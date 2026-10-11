@@ -18,7 +18,9 @@ workos/
 - 后端 / 数据库 / 部署 / 排障 / 备份恢复 / 验收清单：[docs/运维与部署手册.md](docs/运维与部署手册.md)
 - 前端启动 / 构建 / Nginx 部署 / 故障排查：[docs/前端运维手册.md](docs/前端运维手册.md)
 - 前端技术选型 / 分层 / 设计决策 / 扩展指引：[docs/前端架构说明.md](docs/前端架构说明.md)
-- 前端视觉与交互规范（随代码走）：`workos-web/AGENTS.md` 与 `workos-web/design/`
+- 产品需求：[docs/1-WorkOS MVP 产品需求文档.md](docs/1-WorkOS%20MVP%20产品需求文档.md)
+- 本次可用性评估、规则修订与验收：[docs/改造评估与验收.md](docs/改造评估与验收.md)
+- 前端视觉与交互规范：`workos-web/AGENTS.md` 与 `docs/archive/前端规范.md`
 
 ## 技术栈与约束
 
@@ -31,7 +33,7 @@ workos/
 
 不引入：Redis、MQ、WebSocket、微服务、AI、Tag、子任务、Calendar、图片上传。
 
-## 产品模型（冻结口径）
+## 产品模型（冻结基线；本次修订见改造评估与验收）
 
 ```
 Item 类型只有两种：TASK / NOTE
@@ -76,7 +78,7 @@ cd workos-web && npm install && npm run dev
 
 后端默认 `http://localhost:8080`，Swagger 在 `/swagger-ui.html`；前端默认 `http://localhost:5173`，`/api` 由 Vite 代理到后端。
 
-前端页面：`/today`（今天做什么 / 今天别忘了 / 我在等谁 + 还没安排）、`/inbox`（待整理）、`/projects`（项目与项目现状）、`/daily`（日报）。顶栏输入框 `Alt + Space` 快速记录。
+前端页面：`/today`（今天做什么 / 今天别忘了 / 我在等谁 + 还没安排）、`/inbox`（待整理）、`/projects`（项目与项目现状）、`/daily`（日报）。今天页输入标题并回车即可直接加入今日计划；全局「记录事项」可选今天做、待办、待整理，`⌘/Ctrl + Shift + K` 打开。全部事项支持行内「安排今天」。
 
 数据库连接可用环境变量覆盖：`DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD` / `SERVER_PORT`。
 
@@ -87,7 +89,7 @@ GET    /api/today                        Today 聚合（六分区 + 计数）
 POST   /api/today/plan/reorder           调整今日计划顺序
 
 GET    /api/inbox                        待整理列表（含 oldestDays）
-POST   /api/inbox/accept-all             先都收下（status = TODO / priority = P2 / 清空项目）
+POST   /api/inbox/accept-all             先都收下（保留已有项目与优先级；任务转 TODO，笔记归档）
 
 GET    /api/items                        全部事项分页
 POST   /api/items                        创建事项

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import dayjs, { type Dayjs } from 'dayjs'
-import { message } from 'ant-design-vue'
+import { onBeforeRouteLeave } from 'vue-router'
+import { Modal, message } from 'ant-design-vue'
 import {
   createWorkLog,
   deleteItem,
@@ -23,11 +24,25 @@ import type { Item, ItemPriority, ItemStatus, Project, WorkLog } from '@/types'
  * 第一屏：标题 / 项目·状态·优先级 / 描述 / 现在需要做什么
  * 属性改动即时保存；标题与描述走显式保存。
  */
-const props = defineProps<{ open: boolean; itemId?: string | null }>()
-const emit = defineEmits<{ 'update:open': [boolean]; changed: [] }>()
+const props = defineProps<{
+  open: boolean
+  itemId?: string | null
+  /** 打开时直接落到某个动作：wait → 在等别人表单，followUp → 跟进表单 */
+  intent?: 'wait' | 'followUp' | null
+}>()
+const emit = defineEmits<{
+  'update:open': [boolean]
+  changed: []
+  'clear-intent': []
+}>()
 
 const loading = ref(false)
+const actionOnly = ref(false)
 const saving = ref(false)
+const transitioning = ref(false)
+const noteSaving = ref(false)
+let loadRequest = 0
+const busy = computed(() => saving.value || transitioning.value || noteSaving.value)
 const item = ref<Item | null>(null)
 const projects = ref<Project[]>([])
 const activities = ref<Array<{ id: string; activityType: string; remark?: string | null; occurredAt: string }>>([])
@@ -63,6 +78,11 @@ const STATUS_LABEL: Record<ItemStatus, string> = {
   CANCELLED: '已取消'
 }
 
+const ACTIVITY_LABEL: Record<string, string> = {
+  CREATED: '创建事项', STATUS_CHANGED: '状态变更', FIELD_CHANGED: '信息修改',
+  PLAN_CHANGED: '计划调整', WAITING_ENDED: '结束等待'
+}
+
 const ACTION_LABEL: Record<ItemStatus, string> = {
   TODO: '转为待办',
   DOING: '开始做',
@@ -72,30 +92,93 @@ const ACTION_LABEL: Record<ItemStatus, string> = {
   INBOX: '退回待整理'
 }
 
-/** 主要动作里排除「在等别人」，它有专属入口（一次收齐等待信息） */
-const stateActions = computed(
-  () => (item.value?.allowedTransitions ?? []).filter((target) => target !== 'WAITING')
-)
 const canWait = computed(() => item.value?.allowedTransitions?.includes('WAITING'))
+const canCancel = computed(() => item.value?.allowedTransitions?.includes('CANCELLED'))
 const isWaiting = computed(() => item.value?.status === 'WAITING')
 const canFollowUp = computed(() => item.value?.followUpDue || isWaiting.value)
 
+/**
+ * Drawer 的主要动作随状态变化（前端规范.md §6.3）：
+ * 用户真正想做的是「推进这件事」，不是「保存」。
+ */
+const primary = computed<{ status: ItemStatus; label: string } | null>(() => {
+  const current = item.value
+  if (!current) return null
+  const can = (target: ItemStatus) => (current.allowedTransitions ?? []).includes(target)
+  if (current.status === 'WAITING' && can('DOING')) return { status: 'DOING', label: '恢复处理' }
+  if (current.status === 'CANCELLED' && can('TODO')) return { status: 'TODO', label: '重新打开' }
+  if (current.type === 'NOTE' && can('INBOX')) return { status: 'INBOX', label: '恢复记录' }
+  if (current.status === 'DONE') return can('TODO') ? { status: 'TODO', label: '重新打开' } : null
+  if (current.status === 'INBOX' && can('TODO')) return { status: 'TODO', label: '收下为待办' }
+  if (current.status === 'INBOX' && can('DONE')) return { status: 'DONE', label: '保存笔记' }
+  if (current.status === 'TODO' && can('DOING')) return { status: 'DOING', label: '开始处理' }
+  if (can('DONE')) return { status: 'DONE', label: '完成事项' }
+  if (can('DOING')) return { status: 'DOING', label: '开始' }
+  return null
+})
+
+/** 抽屉头部第二行：项目 · 优先级 · 状态（不显示技术字段） */
+const drawerMeta = computed(() => {
+  const current = item.value
+  if (!current) return ''
+  return [current.projectName, current.priority, STATUS_LABEL[current.status]]
+    .filter(Boolean)
+    .join(' · ')
+})
+
+/** 用户正在编辑的文本不能被刷新覆盖，否则会出现「刚打的字自己没了」 */
+const titleDirty = computed(() => !!item.value && title.value !== item.value.title)
+const descriptionDirty = computed(
+  () => !!item.value && description.value !== (item.value.description ?? '')
+)
+
+/** 用服务端事实刷新本地字段，但不覆盖正在编辑的文本 */
+function applyDetail(detail: Item) {
+  const keepTitle = titleDirty.value
+  const keepDescription = descriptionDirty.value
+  item.value = detail
+  if (!keepTitle) title.value = detail.title
+  if (!keepDescription) description.value = detail.description ?? ''
+  planDate.value = detail.plannedDate ? dayjs(detail.plannedDate) : null
+  followUpDate.value = detail.nextFollowUpAt ? dayjs(detail.nextFollowUpAt) : null
+}
+
+/** 打开抽屉：详情 + 历史 + 记录，三个请求并行取 */
 async function load() {
   if (!props.itemId) return
+  const id = props.itemId
+  const request = ++loadRequest
   loading.value = true
   try {
-    const detail = await fetchItem(props.itemId)
-    item.value = detail
-    title.value = detail.title
-    description.value = detail.description ?? ''
-    planDate.value = detail.plannedDate ? dayjs(detail.plannedDate) : null
-    followUpDate.value = detail.nextFollowUpAt ? dayjs(detail.nextFollowUpAt) : null
-    activities.value = await fetchActivities(props.itemId)
-    workLogs.value = await fetchWorkLogs({ itemId: props.itemId })
+    const detail = await fetchItem(id)
+    if (request !== loadRequest || id !== props.itemId) return
+    applyDetail(detail)
+    const [acts, logs] = await Promise.all([
+      fetchActivities(id),
+      fetchWorkLogs({ itemId: id })
+    ])
+    if (request !== loadRequest || id !== props.itemId) return
+    activities.value = acts
+    workLogs.value = logs
   } catch (e) {
     fail(e)
   } finally {
-    loading.value = false
+    if (request === loadRequest) loading.value = false
+  }
+}
+
+/**
+ * 动作之后只刷新事实：状态/属性变了才需要重拉历史，
+ * 不再每次操作都把详情、历史、记录全部拉一遍。
+ */
+async function refresh(alsoActivities = false) {
+  if (!props.itemId) return
+  try {
+    const detail = await fetchItem(props.itemId)
+    applyDetail(detail)
+    if (alsoActivities) activities.value = await fetchActivities(props.itemId)
+  } catch (e) {
+    fail(e)
   }
 }
 
@@ -109,13 +192,14 @@ async function loadProjects() {
 }
 
 async function saveBasics() {
-  if (!item.value) return
+  if (!item.value || busy.value) return
+  if (!title.value.trim()) { message.warning('标题不能为空'); return }
   saving.value = true
   try {
-    await updateItem(item.value.id, { title: title.value, description: description.value })
+    await updateItem(item.value.id, { version: item.value.version, title: title.value.trim(), description: description.value })
     message.success('已保存')
     emit('changed')
-    await load()
+    await refresh()
   } catch (e) {
     fail(e)
   } finally {
@@ -125,27 +209,33 @@ async function saveBasics() {
 
 /** 单选类属性即时保存：少一次点击，路径更短 */
 async function patch(payload: Parameters<typeof updateItem>[1], tip = '已更新') {
-  if (!item.value) return
+  if (!item.value || busy.value) return
+  saving.value = true
   try {
-    await updateItem(item.value.id, payload)
+    await updateItem(item.value.id, { ...payload, version: item.value.version })
     message.success(tip)
     emit('changed')
-    await load()
+    await refresh()
   } catch (e) {
     fail(e)
+  } finally {
+    saving.value = false
   }
 }
 
 async function onTransition(to: ItemStatus) {
-  if (!item.value) return
+  if (!item.value || busy.value) return
   if (to === 'WAITING') return openWaitingForm()
+  transitioning.value = true
   try {
     await transition(item.value.id, { toStatus: to, version: item.value.version })
     message.success(ACTION_LABEL[to] ?? '已更新')
     emit('changed')
-    await load()
+    await refresh(true)
   } catch (e) {
     fail(e)
+  } finally {
+    transitioning.value = false
   }
 }
 
@@ -161,11 +251,12 @@ function openWaitingForm() {
 }
 
 async function submitWaiting() {
-  if (!item.value) return
+  if (!item.value || busy.value) return
   if (!waitingModal.value.waitingFor.trim()) {
     message.warning('在等谁必填')
     return
   }
+  transitioning.value = true
   try {
     await transition(item.value.id, {
       toStatus: 'WAITING',
@@ -175,16 +266,20 @@ async function submitWaiting() {
       version: item.value.version
     })
     waitingModal.value.open = false
+    if (actionOnly.value) emit('update:open', false)
     message.success('已进入等待')
     emit('changed')
-    await load()
+    await refresh(true)
   } catch (e) {
     fail(e)
+  } finally {
+    transitioning.value = false
   }
 }
 
 async function submitFollowUp() {
-  if (!item.value) return
+  if (!item.value || busy.value) return
+  transitioning.value = true
   try {
     await followUpAction(item.value.id, {
       outcome: followUpModal.value.outcome,
@@ -197,12 +292,15 @@ async function submitFollowUp() {
       version: item.value.version
     })
     followUpModal.value.open = false
+    if (actionOnly.value) emit('update:open', false)
     followUpModal.value.note = ''
     message.success('已记录跟进')
     emit('changed')
-    await load()
+    await refresh(true)
   } catch (e) {
     fail(e)
+  } finally {
+    transitioning.value = false
   }
 }
 
@@ -212,12 +310,13 @@ function openFollowUp(outcome: 'STILL_WAITING' | 'RESOLVED' | 'ABANDONED') {
     outcome,
     note: '',
     nextFollowUpAt: dayjs().add(2, 'day').hour(10).minute(0),
-    toStatus: 'DOING'
+    toStatus: item.value?.status === 'WAITING' ? 'DOING' : item.value?.status ?? 'DOING'
   }
 }
 
 async function submitNote() {
-  if (!item.value || !note.value.trim()) return
+  if (!item.value || !note.value.trim() || busy.value) return
+  noteSaving.value = true
   try {
     await createWorkLog({ itemId: item.value.id, content: note.value.trim() })
     note.value = ''
@@ -225,25 +324,40 @@ async function submitNote() {
     emit('changed')
   } catch (e) {
     fail(e)
+  } finally {
+    noteSaving.value = false
   }
 }
 
 async function applyPlan(value: Dayjs | null) {
-  if (!item.value) return
-  if (!value) {
-    await unplanItem(item.value.id)
-    emit('changed')
-    await load()
-    return
-  }
+  if (!item.value || busy.value) return
+  saving.value = true
   try {
-    await planItem(item.value.id, value.format('YYYY-MM-DD'), item.value.version)
+    if (value) await planItem(item.value.id, value.format('YYYY-MM-DD'), item.value.version)
+    else await unplanItem(item.value.id)
     emit('changed')
-    await load()
-  } catch (e) {
-    fail(e)
-  }
+    await refresh()
+  } catch (e) { fail(e) }
+  finally { saving.value = false }
 }
+
+async function canLeave(): Promise<boolean> {
+  if (busy.value) { message.info('正在保存，请稍候'); return false }
+  if (!titleDirty.value && !descriptionDirty.value && !note.value.trim()) return true
+  return new Promise((resolve) => Modal.confirm({
+    title: '还有未保存的内容', content: '关闭会丢失修改或尚未提交的工作记录。',
+    okText: '放弃并关闭', cancelText: '继续编辑',
+    onOk: () => resolve(true), onCancel: () => resolve(false)
+  }))
+}
+async function closeDrawer() {
+  if (!(await canLeave())) return
+  title.value = item.value?.title ?? ''
+  description.value = item.value?.description ?? ''
+  note.value = ''
+  emit('update:open', false)
+}
+onBeforeRouteLeave(() => props.open ? canLeave() : true)
 
 async function removeItem() {
   if (!item.value) return
@@ -259,10 +373,19 @@ async function removeItem() {
 
 watch(
   () => [props.open, props.itemId],
-  ([open]) => {
+  async ([open]) => {
     if (open) {
+      const requestedIntent = props.intent
+      actionOnly.value = Boolean(requestedIntent)
+      if (item.value?.id !== props.itemId) {
+        item.value = null; title.value = ''; description.value = ''; note.value = ''; activities.value = []; workLogs.value = []
+      }
       loadProjects()
-      load()
+      await load()
+      // 从列表行内点「等待 / 跟进」进来时，直接落到对应表单，不让用户再找一次入口
+      if (requestedIntent === 'wait') openWaitingForm()
+      if (requestedIntent === 'followUp') openFollowUp('STILL_WAITING')
+      if (requestedIntent) emit('clear-intent')
     }
   }
 )
@@ -270,16 +393,24 @@ watch(
 
 <template>
   <a-drawer
-    :open="open"
-    :width="600"
-    :body-style="{ paddingBottom: '32px' }"
-    :title="item ? STATUS_LABEL[item.status] : '事项'"
-    @close="emit('update:open', false)"
+    :open="open && !actionOnly"
+    :width="540"
+    :body-style="{ paddingBottom: '0' }"
+    @close="closeDrawer"
   >
-    <a-spin :spinning="loading">
+    <template #title>
+      <div class="drawer-head">
+        <div class="drawer-head__title">{{ item?.title ?? '事项' }}</div>
+        <div class="meta-text">{{ drawerMeta }}</div>
+      </div>
+    </template>
+
+    <!-- 只有首次打开才整块 loading；后续动作只刷新事实，不打断阅读 -->
+    <a-spin :spinning="loading && !item">
       <template v-if="item">
         <!-- 第一屏：标题、归属、描述、当前要做什么 -->
         <a-textarea
+          aria-label="编辑事项标题"
           v-model:value="title"
           :auto-size="{ minRows: 1, maxRows: 3 }"
           class="drawer-title"
@@ -289,15 +420,17 @@ watch(
         <div class="drawer-facts">
           <a-select
             :value="item.projectId ?? undefined"
+            :disabled="busy"
             size="small"
             style="width: 160px"
             placeholder="未分类"
             allow-clear
             :options="projects.map((p) => ({ value: p.id, label: p.name }))"
-            @change="(value: string) => patch({ projectId: value ?? null }, '已改归属')"
+            @change="(value: string) => patch({ projectId: value, clearProject: !value }, '已改归属')"
           />
           <a-select
             :value="item.priority"
+            :disabled="busy"
             size="small"
             style="width: 84px"
             :options="['P0', 'P1', 'P2', 'P3'].map((v) => ({ value: v, label: v }))"
@@ -307,40 +440,47 @@ watch(
             :value="planDate"
             size="small"
             placeholder="计划日期"
+            :disabled="busy || item.type !== 'TASK' || item.status === 'INBOX'"
             @change="applyPlan"
           />
+          <a-date-picker :value="item.dueAt ? dayjs(item.dueAt) : null" size="small" show-time placeholder="截止时间（可选）" :disabled="busy" @change="(value: Dayjs | null) => patch({ dueAt: value?.toISOString(), clearDueAt: !value })" />
           <span v-if="item.waitingDays" class="meta-text">已等 {{ item.waitingDays }} 天</span>
         </div>
 
+        <!-- 先给工作语义，再给数据库属性：打开抽屉第一个要回答的是「我现在该对它做什么」（UX_RULES §23） -->
+        <section v-if="item.type === 'TASK' && item.status !== 'INBOX' && item.status !== 'DONE' && item.status !== 'CANCELLED'" class="drawer-block">
+          <div class="section__head">
+            <h3 class="section-title">等待与跟进</h3>
+            <span v-if="saving" class="section__hint">保存中…</span>
+          </div>
+          <div class="drawer-actions">
+            <a-button v-if="canWait" size="small" :disabled="busy" @click="openWaitingForm">
+              在等别人
+            </a-button>
+            <a-button size="small" type="text" @click="openFollowUp('STILL_WAITING')">
+              设下次跟进
+            </a-button>
+            <!-- 取消是高代价动作，误点的代价高于多一次确认 -->
+            <a-popconfirm
+              v-if="canCancel"
+              title="取消这件事？"
+              ok-text="取消事项"
+              cancel-text="再想想"
+              @confirm="onTransition('CANCELLED')"
+            >
+              <a-button size="small" type="text" danger :disabled="busy">取消</a-button>
+            </a-popconfirm>
+          </div>
+        </section>
+
         <a-textarea
+          aria-label="事项描述"
           v-model:value="description"
           :auto-size="{ minRows: 2, maxRows: 10 }"
           placeholder="描述 / 清单（- [ ] 待办项）"
           class="drawer-desc"
           @blur="description !== (item.description ?? '') && saveBasics()"
         />
-
-        <section class="drawer-block">
-          <div class="section__head">
-            <h3 class="section-title">这件事现在要做什么</h3>
-            <span v-if="saving" class="section__hint">保存中…</span>
-          </div>
-          <div class="drawer-actions">
-            <a-button
-              v-for="target in stateActions"
-              :key="target"
-              size="small"
-              :type="target === 'DONE' ? 'primary' : 'default'"
-              @click="onTransition(target)"
-            >
-              {{ ACTION_LABEL[target] }}
-            </a-button>
-            <a-button v-if="canWait" size="small" @click="openWaitingForm">在等别人</a-button>
-            <a-button size="small" type="text" @click="openFollowUp('STILL_WAITING')">
-              设下次跟进
-            </a-button>
-          </div>
-        </section>
 
         <!-- 等待：回答我等谁、等什么、什么时候该有结果 -->
         <section v-if="isWaiting" class="drawer-block">
@@ -402,12 +542,13 @@ watch(
             <span class="section__hint">只看系统看不出来的信息</span>
           </div>
           <a-textarea
+            aria-label="工作记录"
             v-model:value="note"
             :auto-size="{ minRows: 2, maxRows: 4 }"
             placeholder="做了什么 / 为什么这么决定？"
           />
           <div style="margin-top: 8px">
-            <a-button size="small" :disabled="!note.trim()" @click="submitNote">记录</a-button>
+            <a-button size="small" :loading="noteSaving" :disabled="!note.trim() || busy" @click="submitNote">记录</a-button>
           </div>
           <div v-if="workLogs.length" class="drawer-logs">
             <div v-for="log in workLogs" :key="log.id" class="meta-text">
@@ -419,7 +560,7 @@ watch(
         <a-collapse ghost>
           <a-collapse-panel key="history" header="历史">
             <div v-for="act in activities" :key="act.id" class="meta-text" style="padding: 2px 0">
-              {{ dayjs(act.occurredAt).format('MM-DD HH:mm') }} · {{ act.activityType }}
+              {{ dayjs(act.occurredAt).format('MM-DD HH:mm') }} · {{ ACTIVITY_LABEL[act.activityType] ?? act.activityType }}
               <template v-if="act.remark"> · {{ act.remark }}</template>
             </div>
           </a-collapse-panel>
@@ -427,17 +568,41 @@ watch(
 
         <!-- 危险动作：明显降低视觉权重 -->
         <div v-if="item.status === 'INBOX'" class="drawer-danger">
-          <a-button size="small" type="text" danger @click="removeItem">删除这条记录</a-button>
+          <a-popconfirm
+            title="删除后无法恢复"
+            ok-text="删除"
+            cancel-text="不删"
+            @confirm="removeItem"
+          >
+            <a-button size="small" type="text" danger>删除这条记录</a-button>
+          </a-popconfirm>
         </div>
       </template>
     </a-spin>
 
+    <!-- 主要动作固定在底部：打开就知道「这件事下一步是什么」（前端规范.md §6.2 §6.3） -->
+    <div v-if="primary" class="drawer-footer">
+      <span v-if="item?.status === 'INBOX'" class="meta-text">收下后，在今天或全部事项里安排计划</span>
+      <a-button v-if="primary.status !== 'DONE' && item?.allowedTransitions?.includes('DONE')" :disabled="busy" @click="onTransition('DONE')">完成事项</a-button>
+      <a-button
+        type="primary"
+        :loading="transitioning"
+        :disabled="busy"
+        @click="onTransition(primary.status)"
+      >
+        {{ primary.label }}
+      </a-button>
+    </div>
+
+  </a-drawer>
+
     <a-modal
-      :open="waitingModal.open"
+      :open="open && waitingModal.open"
       title="在等别人"
       ok-text="确认"
+      :confirm-loading="transitioning"
       @ok="submitWaiting"
-      @cancel="waitingModal.open = false"
+      @cancel="waitingModal.open = false; actionOnly && emit('update:open', false)"
     >
       <a-form layout="vertical" size="small">
         <a-form-item label="在等谁（必填）">
@@ -453,11 +618,12 @@ watch(
     </a-modal>
 
     <a-modal
-      :open="followUpModal.open"
+      :open="open && followUpModal.open"
       title="跟进"
       ok-text="提交"
+      :confirm-loading="transitioning"
       @ok="submitFollowUp"
-      @cancel="followUpModal.open = false"
+      @cancel="followUpModal.open = false; actionOnly && emit('update:open', false)"
     >
       <a-radio-group v-model:value="followUpModal.outcome" button-style="solid" size="small">
         <a-radio-button value="STILL_WAITING">还没回</a-radio-button>
@@ -475,15 +641,11 @@ watch(
         <a-form-item v-if="followUpModal.outcome === 'RESOLVED'" label="回到哪个状态">
           <a-select
             v-model:value="followUpModal.toStatus"
-            :options="[
-              { value: 'DOING', label: '继续做' },
-              { value: 'DONE', label: '直接完成' }
-            ]"
+            :options="['TODO', 'DOING', 'DONE'].filter((status) => status === item?.status || item?.allowedTransitions?.includes(status as ItemStatus)).map((status) => ({ value: status, label: STATUS_LABEL[status as ItemStatus] }))"
           />
         </a-form-item>
       </a-form>
     </a-modal>
-  </a-drawer>
 </template>
 
 <style scoped>
@@ -534,5 +696,24 @@ watch(
 .drawer-danger {
   margin-top: 32px;
   text-align: right;
+}
+
+.drawer-head__title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+/* 底部主要动作：吸底但不做浮夸阴影，只用一条分隔线 */
+.drawer-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin: var(--space-6) calc(var(--space-6) * -1) 0;
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
 }
 </style>

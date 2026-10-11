@@ -1,18 +1,15 @@
 package com.workos.inbox.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.workos.common.support.TimeZoneHolder;
 import com.workos.inbox.model.request.InboxAcceptAllReq;
 import com.workos.inbox.model.response.InboxAcceptAllResp;
 import com.workos.inbox.model.response.InboxResp;
 import com.workos.inbox.service.InboxService;
-import com.workos.item.data.entity.ItemActivityPO;
 import com.workos.item.data.entity.ItemPO;
-import com.workos.item.data.mapper.ItemActivityMapper;
 import com.workos.item.data.mapper.ItemMapper;
-import com.workos.item.enums.ActivityType;
-import com.workos.item.enums.ItemPriority;
+import com.workos.item.enums.ItemType;
+import com.workos.item.model.request.ItemTransitionReq;
 import com.workos.item.enums.ItemStatus;
 import com.workos.item.service.ItemService;
 import lombok.RequiredArgsConstructor;
@@ -36,8 +33,6 @@ import java.util.Objects;
 public class InboxServiceImpl implements InboxService {
 
     private final ItemMapper itemMapper;
-
-    private final ItemActivityMapper itemActivityMapper;
 
     private final ItemService itemService;
 
@@ -64,43 +59,26 @@ public class InboxServiceImpl implements InboxService {
      * @Method acceptAll
      * @Param [req]
      * @Return InboxAcceptAllResp
-     * @Desc 先都收下：一次设为 TODO / P2 / 无项目
+     * @Desc 先都收下：保留归属和优先级，通过同一状态入口收下实际待整理事项
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public InboxAcceptAllResp acceptAll(InboxAcceptAllReq req) {
         List<Long> itemIds = Objects.isNull(req) ? null : req.getItemIds();
-        int accepted;
-        if (CollectionUtils.isEmpty(itemIds)) {
-            accepted = itemMapper.acceptAllToTodo();
-        } else {
-            accepted = itemMapper.update(null, new LambdaUpdateWrapper<ItemPO>()
-                    .set(ItemPO::getStatus, ItemStatus.TODO)
-                    .set(ItemPO::getPriority, ItemPriority.P2)
-                    .set(ItemPO::getProjectId, null)
-                    .in(ItemPO::getId, itemIds)
-                    .eq(ItemPO::getStatus, ItemStatus.INBOX));
+        List<ItemPO> items = itemMapper.selectList(new LambdaQueryWrapper<ItemPO>()
+                .eq(ItemPO::getStatus, ItemStatus.INBOX)
+                .in(!CollectionUtils.isEmpty(itemIds), ItemPO::getId, itemIds));
+        for (ItemPO item : items) {
+            ItemTransitionReq transition = new ItemTransitionReq();
+            transition.setVersion(item.getVersion());
+            transition.setToStatus(item.getItemType() == ItemType.NOTE ? ItemStatus.DONE : ItemStatus.TODO);
+            transition.setRemark("先都收下");
+            itemService.transition(item.getId(), transition);
         }
-        if (accepted > 0) {
-            recordAcceptActivity(CollectionUtils.isEmpty(itemIds) ? null : itemIds);
-        }
+        int accepted = items.size();
         InboxAcceptAllResp resp = new InboxAcceptAllResp();
         resp.setAccepted(accepted);
         return resp;
     }
 
-    private void recordAcceptActivity(List<Long> itemIds) {
-        List<ItemPO> items = CollectionUtils.isEmpty(itemIds)
-                ? itemMapper.selectList(new LambdaQueryWrapper<ItemPO>().eq(ItemPO::getStatus, ItemStatus.TODO))
-                : itemMapper.selectBatchIds(itemIds);
-        items.forEach(item -> itemActivityMapper.insert(ItemActivityPO.builder()
-                .itemId(item.getId())
-                .activityType(ActivityType.STATUS_CHANGED)
-                .fromStatus(ItemStatus.INBOX.name())
-                .toStatus(ItemStatus.TODO.name())
-                .remark("先都收下")
-                .actor("USER")
-                .occurredAt(timeZoneHolder.now())
-                .build()));
-    }
 }

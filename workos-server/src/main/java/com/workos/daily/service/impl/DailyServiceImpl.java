@@ -15,6 +15,7 @@ import com.workos.daily.service.DailyService;
 import com.workos.item.data.entity.ItemPO;
 import com.workos.item.data.mapper.ItemMapper;
 import com.workos.item.enums.ItemStatus;
+import com.workos.item.enums.ItemType;
 import com.workos.project.data.entity.ProjectPO;
 import com.workos.project.data.mapper.ProjectMapper;
 import com.workos.worklog.data.entity.WorkLogPO;
@@ -101,11 +102,12 @@ public class DailyServiceImpl implements DailyService {
         String generated = buildContent(date, logs);
         DailyPO po = requireDaily(date, true);
         po.setGeneratedContent(generated);
-        dailyMapper.updateById(po);
+        save(po, po.getVersion());
         DailyGenerateResp resp = new DailyGenerateResp();
         resp.setDate(date);
         resp.setGeneratedContent(generated);
         resp.setSourceWorkLogCount(logs.size());
+        resp.setVersion(po.getVersion());
         return resp;
     }
 
@@ -167,6 +169,7 @@ public class DailyServiceImpl implements DailyService {
     private void appendCompletedItems(StringBuilder builder, java.time.LocalDate date) {
         List<ItemPO> doneItems = itemMapper.selectList(new LambdaQueryWrapper<ItemPO>()
                 .eq(ItemPO::getStatus, ItemStatus.DONE)
+                .eq(ItemPO::getItemType, ItemType.TASK)
                 .ge(ItemPO::getCompletedAt, timeZoneHolder.startOfDay(date))
                 .lt(ItemPO::getCompletedAt, timeZoneHolder.endOfDay(date)));
         if (CollectionUtils.isEmpty(doneItems)) {

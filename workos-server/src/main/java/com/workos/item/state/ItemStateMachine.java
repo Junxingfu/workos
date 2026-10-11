@@ -1,6 +1,7 @@
 package com.workos.item.state;
 
 import com.workos.item.enums.ItemStatus;
+import com.workos.item.enums.ItemType;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -54,5 +55,13 @@ public class ItemStateMachine {
      */
     public Set<ItemStatus> allowedTargets(ItemStatus from) {
         return TRANSITIONS.getOrDefault(from, Set.of());
+    }
+
+    /** 笔记的收下表示保存，恢复后重新进入收件箱。 */
+    public Set<ItemStatus> allowedTargets(ItemStatus from, ItemType type) {
+        if (type != ItemType.NOTE) return allowedTargets(from);
+        if (from == ItemStatus.INBOX) return Set.of(ItemStatus.DONE, ItemStatus.CANCELLED);
+        if (from == ItemStatus.DONE || from == ItemStatus.CANCELLED) return Set.of(ItemStatus.INBOX);
+        return Set.of();
     }
 }

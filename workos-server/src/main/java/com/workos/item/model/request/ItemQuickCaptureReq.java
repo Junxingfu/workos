@@ -31,6 +31,9 @@ public class ItemQuickCaptureReq implements Serializable {
     /** 记录去向；今天的业务日期由后端计算。 */
     private Destination destination = Destination.INBOX;
 
+    /** 从项目中记录时继承主项目；全局记录可留空。 */
+    private Long projectId;
+
     public enum Destination {
         INBOX, TODO, TODAY
     }

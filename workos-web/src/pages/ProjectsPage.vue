@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -16,13 +16,14 @@ const data = ref<BasePageResult<Project> | null>(null)
 const loading = ref(false)
 const creating = ref(false)
 const createOpen = ref(false)
+const status = ref('ACTIVE')
 const newName = ref('')
 const newDesc = ref('')
 
 async function load() {
   loading.value = true
   try {
-    data.value = await fetchProjects({ status: 'ACTIVE', pageNo: 1, pageSize: 50 })
+    data.value = await fetchProjects({ status: status.value, pageNo: 1, pageSize: 100 })
   } catch (e) {
     fail(e)
   } finally {
@@ -51,12 +52,13 @@ async function onCreate() {
   }
 }
 
+watch(status, load)
 onMounted(load)
 </script>
 
 <template>
   <div>
-    <PageHeader title="项目" :sub="`${data?.total ?? 0} 个进行中`">
+    <PageHeader title="项目" :sub="`${data?.total ?? 0} 个${status === 'ACTIVE' ? '进行中' : '已归档'}`">
       <template #actions>
         <a-popover v-model:open="createOpen" trigger="click" placement="bottomRight">
           <template #content>
@@ -73,6 +75,8 @@ onMounted(load)
       </template>
     </PageHeader>
 
+    <a-segmented v-model:value="status" :options="[{ value: 'ACTIVE', label: '进行中' }, { value: 'ARCHIVED', label: '已归档' }]" style="margin-bottom: 16px" />
+
     <!-- 首屏加载才整块 loading；新建和刷新不再让列表变灰 -->
     <a-spin :spinning="loading && !data">
       <div v-if="data?.dataList?.length" class="list">
@@ -80,6 +84,9 @@ onMounted(load)
           v-for="project in data.dataList"
           :key="project.id"
           class="list-row"
+          role="link"
+          tabindex="0"
+          @keydown.enter="router.push(`/projects/${project.id}`)"
           @click="router.push(`/projects/${project.id}`)"
         >
           <div class="list-row__line">
@@ -90,7 +97,7 @@ onMounted(load)
             <span>当前：{{ project.currentFocus || project.description }}</span>
           </div>
           <div class="list-row__sub">
-            <span>进行中 {{ project.doingCount ?? 0 }} · 等待 {{ project.waitingCount ?? 0 }}</span>
+            <span>未完成 {{ project.openCount ?? 0 }} · 进行中 {{ project.doingCount ?? 0 }} · 等待 {{ project.waitingCount ?? 0 }}</span>
             <span v-if="project.lastActivityAt">
               最近活动 {{ dayjs(project.lastActivityAt).format('MM-DD') }}
             </span>
@@ -98,8 +105,8 @@ onMounted(load)
         </div>
       </div>
       <div v-else class="empty-state">
-        <p class="empty-state__title">还没有项目</p>
-        <p class="empty-state__hint">项目是可选的；不建项目也能用事项和今天。</p>
+        <p class="empty-state__title">{{ status === 'ACTIVE' ? '还没有进行中的项目' : '没有已归档的项目' }}</p>
+        <p class="empty-state__hint">{{ status === 'ACTIVE' ? '项目是可选的；不建项目也能用事项和今天。' : '归档不会删除事项，可以从项目详情恢复。' }}</p>
       </div>
     </a-spin>
   </div>

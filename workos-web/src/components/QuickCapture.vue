@@ -3,7 +3,7 @@ import { nextTick, ref } from 'vue'
 import { fail, quickCapture } from '@/api'
 import { notifyCaptureCreated } from '@/composables/useCaptureRefresh'
 
-const props = withDefaults(defineProps<{ destination?: 'INBOX' | 'TODO' | 'TODAY' }>(), { destination: 'INBOX' })
+const props = withDefaults(defineProps<{ destination?: 'INBOX' | 'TODO' | 'TODAY'; projectId?: string; projectName?: string }>(), { destination: 'INBOX' })
 const emit = defineEmits<{ saved: [] }>()
 const content = ref('')
 const destination = ref(props.destination)
@@ -28,7 +28,7 @@ async function submit() {
   result.value = ''
   const submitted = content.value
   try {
-    await quickCapture(submitted.trim(), destination.value)
+    await quickCapture(submitted.trim(), destination.value, props.projectId)
     if (content.value === submitted) content.value = ''
     result.value = destination.value === 'TODAY' ? '已加入今日计划' : destination.value === 'TODO' ? '已加入待办' : '已放入收件箱'
     notifyCaptureCreated()
@@ -55,6 +55,7 @@ function onEnter(event: KeyboardEvent) {
       <a-select v-model:value="destination" :disabled="saving" :options="options" aria-label="记录到哪里" style="width: 168px" />
       <a-button type="primary" :loading="saving" :disabled="!content.trim()" @click="submit">记录</a-button>
       <span class="meta-text" role="status">{{ result || 'Enter 记录' }}</span>
+      <span v-if="projectName" class="meta-text">主项目：{{ projectName }}</span>
     </div>
   </div>
 </template>

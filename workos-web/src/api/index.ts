@@ -70,8 +70,8 @@ export const fetchItems = async (params: ItemQuery): Promise<BasePageResult<Item
 
 export const fetchItem = async (id: string): Promise<Item> => numericItem(await http.get<Item>(`/items/${id}`))
 
-export const quickCapture = (content: string, destination: 'INBOX' | 'TODO' | 'TODAY' = 'INBOX'): Promise<string> =>
-  http.post('/items/quick-capture', { content, destination })
+export const quickCapture = (content: string, destination: 'INBOX' | 'TODO' | 'TODAY' = 'INBOX', projectId?: string): Promise<string> =>
+  http.post('/items/quick-capture', { content, destination, projectId })
 
 export const createItem = (payload: Partial<Item> & { title: string }) =>
   http.post('/items', payload)
@@ -83,6 +83,7 @@ export const updateItem = (
     title?: string
     description?: string
     projectId?: string | null
+    relatedProjectIds?: string[]
     itemType?: ItemType
     priority?: ItemPriority
     plannedDate?: string

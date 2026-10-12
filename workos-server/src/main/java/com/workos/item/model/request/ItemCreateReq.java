@@ -40,6 +40,10 @@ public class ItemCreateReq implements Serializable {
     @Schema(title = "所属项目")
     private Long projectId;
 
+    /** 关联项目，进度与主项目共享；不重复创建事项。 */
+    @Size(max = 20)
+    private java.util.List<Long> relatedProjectIds;
+
     /**
      * 描述（Markdown）
      */

@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import dayjs, { type Dayjs } from 'dayjs'
 import { onBeforeRouteLeave } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
+import ItemStateFlow from '@/components/ItemStateFlow.vue'
 import {
   createWorkLog,
   deleteItem,
@@ -17,7 +18,7 @@ import {
   unplanItem,
   updateItem
 } from '@/api'
-import type { Item, ItemPriority, ItemStatus, Project, WorkLog } from '@/types'
+import type { Item, ItemActivity, ItemPriority, ItemStatus, Project, WorkLog } from '@/types'
 
 /**
  * 事项操作中心（design.md §19 §36 §37）
@@ -45,7 +46,15 @@ let loadRequest = 0
 const busy = computed(() => saving.value || transitioning.value || noteSaving.value)
 const item = ref<Item | null>(null)
 const projects = ref<Project[]>([])
-const activities = ref<Array<{ id: string; activityType: string; remark?: string | null; occurredAt: string }>>([])
+const relatedDraft = ref<string[]>([])
+const relatedEditing = ref(false)
+const projectOptions = computed(() => {
+  const options = new Map(projects.value.map(p => [p.id, { value: p.id, label: p.name }]))
+  if (item.value?.projectId && !options.has(item.value.projectId)) options.set(item.value.projectId, { value: item.value.projectId, label: `${item.value.projectName}（已归档）` })
+  for (const p of item.value?.relatedProjects ?? []) if (!options.has(p.projectId)) options.set(p.projectId, { value: p.projectId, label: `${p.projectName}（已归档）` })
+  return [...options.values()]
+})
+const activities = ref<ItemActivity[]>([])
 const workLogs = ref<WorkLog[]>([])
 const note = ref('')
 const title = ref('')
@@ -121,7 +130,7 @@ const primary = computed<{ status: ItemStatus; label: string } | null>(() => {
 const drawerMeta = computed(() => {
   const current = item.value
   if (!current) return ''
-  return [current.projectName, current.priority, STATUS_LABEL[current.status]]
+  return [current.projectName, current.priority, current.type === 'NOTE' && current.status === 'DONE' ? '已保存' : STATUS_LABEL[current.status]]
     .filter(Boolean)
     .join(' · ')
 })
@@ -139,6 +148,7 @@ function applyDetail(detail: Item) {
   item.value = detail
   if (!keepTitle) title.value = detail.title
   if (!keepDescription) description.value = detail.description ?? ''
+  if (!relatedEditing.value) relatedDraft.value = detail.relatedProjects?.map(p => p.projectId) ?? []
   planDate.value = detail.plannedDate ? dayjs(detail.plannedDate) : null
   followUpDate.value = detail.nextFollowUpAt ? dayjs(detail.nextFollowUpAt) : null
 }
@@ -209,18 +219,28 @@ async function saveBasics() {
 
 /** 单选类属性即时保存：少一次点击，路径更短 */
 async function patch(payload: Parameters<typeof updateItem>[1], tip = '已更新') {
-  if (!item.value || busy.value) return
+  if (!item.value || busy.value) return false
   saving.value = true
   try {
     await updateItem(item.value.id, { ...payload, version: item.value.version })
     message.success(tip)
     emit('changed')
     await refresh()
+    return true
   } catch (e) {
     fail(e)
+    return false
   } finally {
     saving.value = false
   }
+}
+
+function cancelRelatedEdit() {
+  relatedDraft.value = item.value?.relatedProjects?.map(p => p.projectId) ?? []
+  relatedEditing.value = false
+}
+async function saveRelatedProjects() {
+  if (await patch({ relatedProjectIds: relatedDraft.value }, '已更新关联项目')) cancelRelatedEdit()
 }
 
 async function onTransition(to: ItemStatus) {
@@ -343,7 +363,7 @@ async function applyPlan(value: Dayjs | null) {
 
 async function canLeave(): Promise<boolean> {
   if (busy.value) { message.info('正在保存，请稍候'); return false }
-  if (!titleDirty.value && !descriptionDirty.value && !note.value.trim()) return true
+  if (!titleDirty.value && !descriptionDirty.value && !note.value.trim() && !relatedEditing.value) return true
   return new Promise((resolve) => Modal.confirm({
     title: '还有未保存的内容', content: '关闭会丢失修改或尚未提交的工作记录。',
     okText: '放弃并关闭', cancelText: '继续编辑',
@@ -355,6 +375,7 @@ async function closeDrawer() {
   title.value = item.value?.title ?? ''
   description.value = item.value?.description ?? ''
   note.value = ''
+  cancelRelatedEdit()
   emit('update:open', false)
 }
 onBeforeRouteLeave(() => props.open ? canLeave() : true)
@@ -378,6 +399,7 @@ watch(
       const requestedIntent = props.intent
       actionOnly.value = Boolean(requestedIntent)
       if (item.value?.id !== props.itemId) {
+        relatedEditing.value = false; relatedDraft.value = []
         item.value = null; title.value = ''; description.value = ''; note.value = ''; activities.value = []; workLogs.value = []
       }
       loadProjects()
@@ -417,17 +439,18 @@ watch(
           @blur="title !== item.title && saveBasics()"
         />
 
+        <ItemStateFlow :item="item" :disabled="busy" @transition="onTransition" />
+
+        <div class="drawer-projects">
+          <label for="item-main-project">主项目</label>
+          <a-select id="item-main-project" aria-label="主项目" :value="item.projectId ?? undefined" :disabled="busy || relatedEditing" show-search option-filter-prop="label" placeholder="未分类（可选）" :allow-clear="!item.relatedProjects?.length" :options="projectOptions" @change="(value: string) => patch({ projectId: value, clearProject: !value }, '已修改主项目')" />
+          <label for="item-related-projects">关联项目</label>
+          <a-select id="item-related-projects" aria-label="关联项目" mode="multiple" v-model:value="relatedDraft" :disabled="busy || !item.projectId" show-search option-filter-prop="label" placeholder="其他项目也需要跟踪时再选" :options="projectOptions.filter(p => p.value !== item?.projectId)" @change="relatedEditing = true" />
+          <div v-if="relatedEditing" class="drawer-projects__save"><a-button size="small" type="primary" :loading="saving" :disabled="busy" @click="saveRelatedProjects">保存关联</a-button> <a-button size="small" :disabled="busy" @click="cancelRelatedEdit">取消修改</a-button></div>
+          <p class="meta-text">关联项目共享同一份进度和记录。日报按主项目归集，不重复生成。</p>
+        </div>
+
         <div class="drawer-facts">
-          <a-select
-            :value="item.projectId ?? undefined"
-            :disabled="busy"
-            size="small"
-            style="width: 160px"
-            placeholder="未分类"
-            allow-clear
-            :options="projects.map((p) => ({ value: p.id, label: p.name }))"
-            @change="(value: string) => patch({ projectId: value, clearProject: !value }, '已改归属')"
-          />
           <a-select
             :value="item.priority"
             :disabled="busy"
@@ -440,7 +463,7 @@ watch(
             :value="planDate"
             size="small"
             placeholder="计划日期"
-            :disabled="busy || item.type !== 'TASK' || item.status === 'INBOX'"
+            :disabled="busy || item.type !== 'TASK' || !['TODO', 'DOING', 'WAITING'].includes(item.status)"
             @change="applyPlan"
           />
           <a-date-picker :value="item.dueAt ? dayjs(item.dueAt) : null" size="small" show-time placeholder="截止时间（可选）" :disabled="busy" @change="(value: Dayjs | null) => patch({ dueAt: value?.toISOString(), clearDueAt: !value })" />
@@ -561,6 +584,7 @@ watch(
           <a-collapse-panel key="history" header="历史">
             <div v-for="act in activities" :key="act.id" class="meta-text" style="padding: 2px 0">
               {{ dayjs(act.occurredAt).format('MM-DD HH:mm') }} · {{ ACTIVITY_LABEL[act.activityType] ?? act.activityType }}
+              <template v-if="act.fromStatus && act.toStatus"> · {{ STATUS_LABEL[act.fromStatus as ItemStatus] }} → {{ STATUS_LABEL[act.toStatus as ItemStatus] }}</template>
               <template v-if="act.remark"> · {{ act.remark }}</template>
             </div>
           </a-collapse-panel>
@@ -582,7 +606,7 @@ watch(
 
     <!-- 主要动作固定在底部：打开就知道「这件事下一步是什么」（前端规范.md §6.2 §6.3） -->
     <div v-if="primary" class="drawer-footer">
-      <span v-if="item?.status === 'INBOX'" class="meta-text">收下后，在今天或全部事项里安排计划</span>
+      <span v-if="item?.status === 'INBOX' && item.type === 'TASK'" class="meta-text">收下后，在今天或全部事项里安排计划</span>
       <a-button v-if="primary.status !== 'DONE' && item?.allowedTransitions?.includes('DONE')" :disabled="busy" @click="onTransition('DONE')">完成事项</a-button>
       <a-button
         type="primary"
@@ -669,6 +693,11 @@ watch(
   gap: 8px;
   margin: 12px 0;
 }
+
+.drawer-projects { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; align-items: start; }
+.drawer-projects label { padding-top: 5px; color: var(--color-text-secondary); }
+.drawer-projects p { grid-column: 2; margin: 0; }
+.drawer-projects__save { grid-column: 2; }
 
 .drawer-desc {
   margin-bottom: 4px;

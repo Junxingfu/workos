@@ -40,6 +40,7 @@ export interface Item {
   priority: ItemPriority
   projectId?: string | null
   projectName?: string | null
+  relatedProjects?: Array<{ projectId: string; projectName: string }>
   description?: string | null
   plannedDate?: string | null
   dueAt?: string | null

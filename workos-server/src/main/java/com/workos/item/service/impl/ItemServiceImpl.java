@@ -12,6 +12,8 @@ import com.workos.item.data.entity.ItemActivityPO;
 import com.workos.item.data.entity.ItemPO;
 import com.workos.item.data.mapper.ItemActivityMapper;
 import com.workos.item.data.mapper.ItemMapper;
+import com.workos.item.data.mapper.ItemProjectMapper;
+import com.workos.item.model.dto.ItemProjectDTO;
 import com.workos.item.enums.ActivityType;
 import com.workos.item.enums.FollowUpOutcome;
 import com.workos.item.enums.ItemPriority;
@@ -80,6 +82,8 @@ public class ItemServiceImpl implements ItemService {
 
     private final ItemMapper itemMapper;
 
+    private final ItemProjectMapper itemProjectMapper;
+
     private final ItemActivityMapper itemActivityMapper;
 
     private final WorkLogMapper workLogMapper;
@@ -108,7 +112,10 @@ public class ItemServiceImpl implements ItemService {
         dto.setStatus(Objects.requireNonNullElse(req.getStatus(), ItemStatus.INBOX));
         dto.setPriority(Objects.requireNonNullElse(req.getPriority(), ItemPriority.P2));
         dto.setSource(Objects.requireNonNullElse(req.getSource(), ItemSource.MANUAL));
-        return save(dto, ActivityType.CREATED, "创建事项");
+        List<Long> related = validateProjects(dto.getProjectId(), req.getRelatedProjectIds());
+        Long id = save(dto, ActivityType.CREATED, "创建事项");
+        replaceRelatedProjects(id, related);
+        return id;
     }
 
     /**
@@ -158,10 +165,13 @@ public class ItemServiceImpl implements ItemService {
     public BasePageResult<ItemResp> page(ItemPageReq req) {
         req.fillPageDefault();
         LambdaQueryWrapper<ItemPO> wrapper = new LambdaQueryWrapper<ItemPO>()
-                .eq(Objects.nonNull(req.getProjectId()), ItemPO::getProjectId, req.getProjectId())
                 .eq(Objects.nonNull(req.getType()), ItemPO::getItemType, req.getType())
                 .eq(Objects.nonNull(req.getPriority()), ItemPO::getPriority, req.getPriority())
                 .isNull(Boolean.TRUE.equals(req.getUnclassified()), ItemPO::getProjectId);
+        if (req.getProjectId() != null) {
+            wrapper.and(w -> w.eq(ItemPO::getProjectId, req.getProjectId())
+                    .or().apply("EXISTS (SELECT 1 FROM item_project_link l WHERE l.item_id = item.id AND l.project_id = {0})", req.getProjectId()));
+        }
         if (Objects.nonNull(req.getStatus())) {
             wrapper.eq(ItemPO::getStatus, req.getStatus());
         } else {
@@ -201,6 +211,16 @@ public class ItemServiceImpl implements ItemService {
         ItemPO po = requireItem(id);
         checkVersion(po.getVersion(), req.getVersion());
         List<String> changes = new ArrayList<>();
+        boolean projectsChanged = req.getProjectId() != null || Boolean.TRUE.equals(req.getClearProject())
+                || req.getRelatedProjectIds() != null;
+        List<Long> relatedProjects = null;
+        if (projectsChanged) {
+            Long main = Boolean.TRUE.equals(req.getClearProject()) ? null
+                    : req.getProjectId() != null ? req.getProjectId() : po.getProjectId();
+            List<Long> existing = itemProjectMapper.findByItems(List.of(id)).stream().map(ItemProjectDTO::getProjectId).toList();
+            relatedProjects = validateProjects(main, req.getRelatedProjectIds() == null ? existing : req.getRelatedProjectIds());
+            if (!new java.util.HashSet<>(existing).equals(new java.util.HashSet<>(relatedProjects))) changes.add("关联项目已更新");
+        }
         if (Boolean.TRUE.equals(req.getClearProject())) changes.add("清空项目");
         if (Boolean.TRUE.equals(req.getClearDueAt())) changes.add("清空截止时间");
         if (Objects.nonNull(req.getTitle()) && !Objects.equals(req.getTitle(), po.getTitle())) {
@@ -252,6 +272,7 @@ public class ItemServiceImpl implements ItemService {
             return Boolean.TRUE;
         }
         updateItem(po, req.getVersion());
+        if (projectsChanged) replaceRelatedProjects(id, relatedProjects);
         if (Boolean.TRUE.equals(req.getClearProject()) || Boolean.TRUE.equals(req.getClearDueAt())) {
             clearItemFields(po.getId(), po.getVersion(), wrapper -> {
                 if (Boolean.TRUE.equals(req.getClearProject())) wrapper.set(ItemPO::getProjectId, null);
@@ -499,6 +520,8 @@ public class ItemServiceImpl implements ItemService {
         }
         List<Long> itemIds = poList.stream().map(ItemPO::getId).filter(Objects::nonNull).toList();
         Map<Long, String> projectNames = projectNames(poList);
+        Map<Long, List<ItemProjectDTO>> related = itemProjectMapper.findByItems(itemIds).stream()
+                .collect(Collectors.groupingBy(ItemProjectDTO::getItemId));
         Map<Long, LastLogDTO> lastLogs = itemMapper.selectLastLogs(itemIds).stream()
                 .collect(Collectors.toMap(LastLogDTO::getItemId, Function.identity(), (a, b) -> a));
         Map<Long, LastActivityDTO> lastActivities = itemMapper.selectLastActivities(itemIds).stream()
@@ -527,7 +550,9 @@ public class ItemServiceImpl implements ItemService {
                     && po.getStatus() != ItemStatus.DONE
                     && po.getStatus() != ItemStatus.CANCELLED);
             dto.setWaitingDays(po.getStatus() == ItemStatus.WAITING ? waitingDays(po.getWaitingSince()) : null);
-            return itemConverter.toResp(dto);
+            ItemResp resp = itemConverter.toResp(dto);
+            resp.setRelatedProjects(related.getOrDefault(po.getId(), List.of()));
+            return resp;
         }).toList();
     }
 
@@ -564,6 +589,28 @@ public class ItemServiceImpl implements ItemService {
         itemMapper.insert(po);
         recordActivity(po.getId(), activityType, null, po.getStatus(), remark, "USER");
         return po.getId();
+    }
+
+    private List<Long> validateProjects(Long main, List<Long> requested) {
+        List<Long> related = requested == null ? List.of() : requested.stream()
+                .filter(id -> !Objects.equals(id, main)).distinct().toList();
+        if (related.size() > 20 || related.stream().anyMatch(Objects::isNull)) {
+            throw new BizException(ResponseCode.PARAM_ERROR, "关联项目最多20个，且项目不能为空");
+        }
+        if (main == null && !related.isEmpty()) {
+            throw new BizException(ResponseCode.PARAM_ERROR, "请先选择主项目；清空主项目前请先移除关联项目");
+        }
+        Set<Long> ids = new LinkedHashSet<>(related);
+        if (main != null) ids.add(main);
+        if (!ids.isEmpty() && projectMapper.selectBatchIds(ids).size() != ids.size()) {
+            throw new BizException(ResponseCode.PROJECT_NOT_FOUND);
+        }
+        return related;
+    }
+
+    private void replaceRelatedProjects(Long id, List<Long> projectIds) {
+        itemProjectMapper.removeForItem(id);
+        if (!projectIds.isEmpty()) itemProjectMapper.addForItem(id, projectIds);
     }
 
     private ItemPO requireItem(Long id) {

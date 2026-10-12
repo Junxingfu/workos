@@ -14,7 +14,7 @@ export default defineConfig({
     proxy: {
       // 开发期直接代理到后端，避免 CORS
       '/api': {
-        target: 'http://localhost:8080',
+        target: process.env.WORKOS_API_TARGET || 'http://localhost:8080',
         changeOrigin: true,
         configure: (proxy) => {
           // 代理是"同源门面"：浏览器认为同源不会做 CORS 检查，

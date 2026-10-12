@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import dayjs from 'dayjs'
-import { useRoute, useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { Modal, message } from 'ant-design-vue'
 import {
   archiveProject,
   fail,
@@ -15,6 +15,8 @@ import {
 import ItemCard from '@/components/ItemCard.vue'
 import ItemDrawer from '@/components/ItemDrawer.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import QuickCapture from '@/components/QuickCapture.vue'
+import { useCaptureRefresh } from '@/composables/useCaptureRefresh'
 import { useListActions } from '@/composables/useListActions'
 import type { Item, ItemRowAction, Project } from '@/types'
 
@@ -28,6 +30,8 @@ const project = ref<Project | null>(null)
 const loading = ref(false)
 const saving = ref(false)
 const editing = ref(false)
+const editVersion = ref<number | undefined>()
+const formSnapshot = ref('')
 const archiving = ref(false)
 const doingItems = ref<Item[]>([])
 const todoItems = ref<Item[]>([])
@@ -87,6 +91,7 @@ async function load() {
       keyLinks: context?.keyLinks ?? '',
       notesMarkdown: context?.notesMarkdown ?? ''
     }
+    if (!editing.value) formSnapshot.value = JSON.stringify(form.value)
 
     const projectId = String(route.params.id)
     const [doing, waiting, todo] = await Promise.all([
@@ -151,10 +156,10 @@ function onItemAction(action: ItemRowAction, item: Item) {
 }
 
 async function save() {
-  if (!project.value) return
+  if (!project.value || saving.value) return
   saving.value = true
   try {
-    await updateProjectContext(project.value.id, { ...form.value })
+    await updateProjectContext(project.value.id, { ...form.value, version: editVersion.value })
     message.success('已保存')
     editing.value = false
     await load()
@@ -164,6 +169,25 @@ async function save() {
     saving.value = false
   }
 }
+
+function startEditing() {
+  editVersion.value = project.value?.context?.version
+  editing.value = true
+}
+async function canLeaveContext(): Promise<boolean> {
+  if (saving.value) return false
+  if (!editing.value || JSON.stringify(form.value) === formSnapshot.value) return true
+  return new Promise(resolve => Modal.confirm({
+    title: '项目现状还未保存', content: '放弃后将保留上次保存的现状。',
+    okText: '放弃修改', cancelText: '继续编辑', onOk: () => resolve(true), onCancel: () => resolve(false)
+  }))
+}
+async function cancelEditing() {
+  if (!(await canLeaveContext())) return
+  form.value = JSON.parse(formSnapshot.value)
+  editing.value = false
+}
+onBeforeRouteLeave(canLeaveContext)
 
 async function toggleArchive() {
   if (!project.value) return
@@ -184,6 +208,7 @@ async function toggleArchive() {
   }
 }
 
+useCaptureRefresh(load)
 onMounted(load)
 </script>
 
@@ -195,13 +220,15 @@ onMounted(load)
     >
       <template #actions>
         <a-button size="small" type="text" @click="router.push('/projects')">返回项目</a-button>
-        <a-button v-if="!editing" size="small" @click="editing = true">编辑现状</a-button>
+        <a-button v-if="!editing" size="small" @click="startEditing">编辑现状</a-button>
         <template v-else>
-          <a-button size="small" @click="editing = false">取消</a-button>
+          <a-button size="small" :disabled="saving" @click="cancelEditing">取消</a-button>
           <a-button size="small" type="primary" :loading="saving" @click="save">保存</a-button>
         </template>
       </template>
     </PageHeader>
+
+    <QuickCapture v-if="project?.status === 'ACTIVE'" destination="TODO" :project-id="project.id" :project-name="project.name" />
 
     <!-- 首屏加载才整块 loading；保存现状和归档不再让页面变灰 -->
     <a-spin :spinning="loading && !project">
@@ -302,6 +329,7 @@ onMounted(load)
           <h2 class="section-title">待办</h2>
           <a-button class="section__count" size="small" type="link" @click="router.push({ path: '/items', query: { projectId: project?.id } })">查看项目全部事项</a-button>
         </div>
+        <p class="meta-text" style="margin-bottom: 8px">包含主项目和关联项目事项，共享进度。</p>
         <div v-if="todoItems.length" class="list">
           <ItemCard v-for="item in todoItems" :key="item.id" :item="item" :pending-action="pendingActionFor(item)" @action="onItemAction" />
         </div>

@@ -75,6 +75,7 @@ public interface ItemConverter {
      * @Desc 领域对象转响应
      */
     @Mapping(target = "type", source = "itemType")
+    @Mapping(target = "relatedProjects", ignore = true)
     ItemResp toResp(ItemDTO dto);
 
     /**
@@ -84,6 +85,7 @@ public interface ItemConverter {
      * @Desc 实体直接转响应
      */
     @Mapping(target = "type", source = "itemType")
+    @Mapping(target = "relatedProjects", ignore = true)
     @Mapping(target = "projectName", ignore = true)
     @Mapping(target = "remainingSteps", ignore = true)
     @Mapping(target = "lastLogContent", ignore = true)

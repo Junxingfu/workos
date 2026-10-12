@@ -18,6 +18,7 @@ import { useCaptureRefresh } from '@/composables/useCaptureRefresh'
  */
 const route = useRoute()
 const router = useRouter()
+const isDemo = import.meta.env.VITE_WORKOS_DEMO === 'true'
 
 const captureOpen = ref(false)
 const captureRef = ref()
@@ -122,6 +123,7 @@ onUnmounted(() => {
 
       <main class="app-main">
         <div class="app-content">
+          <p v-if="isDemo" class="demo-notice">示例工作区 · 可自由体验，进度和记录会保留</p>
           <router-view />
         </div>
       </main>
@@ -134,6 +136,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.demo-notice { margin: 0 0 16px; padding-bottom: 10px; border-bottom: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 12px; }
 .sidebar {
   flex: none;
   width: var(--sidebar-width);

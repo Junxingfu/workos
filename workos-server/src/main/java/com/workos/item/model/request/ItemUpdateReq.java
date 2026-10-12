@@ -35,6 +35,10 @@ public class ItemUpdateReq implements Serializable {
     @Schema(title = "所属项目")
     private Long projectId;
 
+    /** null 不修改，空数组清空关联项目。 */
+    @Size(max = 20)
+    private java.util.List<Long> relatedProjectIds;
+
     /**
      * 标题
      */

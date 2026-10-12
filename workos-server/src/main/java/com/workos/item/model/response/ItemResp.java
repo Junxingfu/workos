@@ -44,6 +44,9 @@ public class ItemResp implements Serializable {
     @Schema(title = "所属项目名称")
     private String projectName;
 
+    @Schema(title = "关联项目；与主项目共享同一事项进度")
+    private List<com.workos.item.model.dto.ItemProjectDTO> relatedProjects;
+
     private String description;
 
     @Schema(title = "计划日期")

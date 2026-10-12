@@ -74,7 +74,7 @@
                 #{excludedId}
             </foreach>
         </if>
-        ORDER BY priority ASC, due_at ASC NULLS LAST, updated_at DESC
+        ORDER BY priority ASC, due_at ASC NULLS LAST, updated_at DESC, id DESC
         LIMIT 5
     </select>
 
@@ -112,16 +112,20 @@
     </select>
 
     <!-- 项目维度：今天计划了做多少条 -->
+    <sql id="projectMembership">
+        (SELECT id AS item_id, project_id FROM item WHERE project_id IS NOT NULL
+         UNION SELECT item_id, project_id FROM item_project_link) membership
+    </sql>
     <select id="selectProjectTodayCount" resultType="com.workos.project.model.dto.ProjectCountRowDTO">
-        SELECT project_id, COUNT(*) AS cnt
-        FROM item
+        SELECT membership.project_id, COUNT(*) AS cnt
+        FROM item JOIN <include refid="projectMembership"/> ON membership.item_id = item.id
         WHERE planned_date = #{today}
           AND status NOT IN ('DONE', 'CANCELLED')
-          AND project_id IN
+          AND membership.project_id IN
         <foreach collection="projectIds" item="projectId" open="(" separator="," close=")">
             #{projectId}
         </foreach>
-        GROUP BY project_id
+        GROUP BY membership.project_id
     </select>
 
     <!-- 待跟进：已过期且未处理 -->
@@ -185,13 +189,13 @@
 
     <!-- 项目维度统计：状态计数 + 最近活动时间 -->
     <select id="selectProjectStatRows" resultType="com.workos.project.model.dto.ProjectStatRowDTO">
-        SELECT project_id, status, COUNT(*) AS cnt, MAX(updated_at) AS last_at
-        FROM item
-        WHERE project_id IN
+        SELECT membership.project_id, status, COUNT(*) AS cnt, MAX(updated_at) AS last_at
+        FROM item JOIN <include refid="projectMembership"/> ON membership.item_id = item.id
+        WHERE membership.project_id IN
         <foreach collection="projectIds" item="projectId" open="(" separator="," close=")">
             #{projectId}
         </foreach>
-        GROUP BY project_id, status
+        GROUP BY membership.project_id, status
     </select>
 
     <select id="countUnclassified" resultType="long">

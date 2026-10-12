@@ -54,7 +54,7 @@ const STATUS_COLOR: Record<ItemStatus, string> = {
 }
 
 const glyph = computed(() => GLYPH[props.item.status] ?? '○')
-const statusLabel = computed(() => STATUS_LABEL[props.item.status] ?? '')
+const statusLabel = computed(() => props.item.type === 'NOTE' && props.item.status === 'DONE' ? '已保存' : STATUS_LABEL[props.item.status] ?? '')
 const statusColor = computed(() => STATUS_COLOR[props.item.status] ?? 'var(--color-text-tertiary)')
 const isClosed = computed(() => props.item.status === 'DONE' || props.item.status === 'CANCELLED')
 const isPending = computed(() => Boolean(props.pendingAction))
@@ -154,7 +154,8 @@ function onPrimary() {
       <div class="item-row__head">
         <span class="meta-text">{{ statusLabel }}</span>
         <span class="item-row__title">{{ item.title }}</span>
-        <span v-if="item.projectName" class="item-row__project">{{ item.projectName }}</span>
+        <span v-if="item.projectName" class="item-row__project" :title="`主项目：${item.projectName}`">{{ item.projectName }}</span>
+        <span v-if="item.relatedProjects?.length" class="meta-text" :title="`关联项目：${item.relatedProjects.map(p => p.projectName).join('、')}`">跨 {{ item.relatedProjects.length + 1 }} 项目</span>
         <span v-if="dateText" class="item-row__date">{{ dateText }}</span>
         <span
           class="item-row__priority"

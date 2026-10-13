@@ -17,7 +17,9 @@
 
 ## 本地开始
 
-先在根目录执行 `docker compose up -d`。后端在 workos-server 目录执行 `mvn spring-boot:run`，前端在 workos-web 目录执行 `npm ci` 和 `npm run dev`。
+macOS 推荐在根目录执行 `./scripts/workos start`，由系统当前登录会话托管前后端，关闭终端后继续运行。Docker/Colima 需先启动；脚本会启动 PostgreSQL 容器、检查库结构并打包后端。
+
+`./scripts/workos status` 查看状态，`./scripts/workos logs` 查看日志，`./scripts/workos stop` 停止前后端；修改后端代码后用 `./scripts/workos restart` 重新打包。重启电脑或退出登录后再次 start。
 
 访问 `http://localhost:5173`。已有数据库升级、独立示例工作区和测试方法见[运行与验收](docs/运行与验收.md)。
 

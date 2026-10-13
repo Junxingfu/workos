@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""macOS 登录会话中的本地服务管理；不安装登录项，不修改电源设置。"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import plistlib
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
+
+ROOT = Path(__file__).resolve().parent.parent
+INSTANCE = hashlib.sha256(str(ROOT).encode()).hexdigest()[:10]
+DOMAIN = f"gui/{os.getuid()}"
+
+
+def run(args, **kwargs):
+    return subprocess.run([str(a) for a in args], check=True, **kwargs)
+
+
+def capture(args):
+    return run(args, capture_output=True, text=True).stdout.strip()
+
+
+def label(mode, part):
+    return f"com.workos.{INSTANCE}.{mode}.{part}"
+
+
+def loaded(mode, part):
+    result = subprocess.run(["launchctl", "print", f"{DOMAIN}/{label(mode, part)}"],
+                            capture_output=True, text=True)
+    return result.stdout if result.returncode == 0 else ""
+
+
+def healthy(url, api=False):
+    try:
+        with urllib.request.urlopen(url, timeout=3) as response:
+            data = response.read()
+            if api:
+                return json.loads(data).get("code") == 0
+            return json.loads(data).get("status") == "UP"
+    except (OSError, ValueError):
+        return False
+
+
+def status(mode, web_port, api_port, directory):
+    ok = True
+    for part, url, api in [
+        ("server", f"http://127.0.0.1:{api_port}/actuator/health", False),
+        ("web", f"http://127.0.0.1:{web_port}/api/projects?pageSize=1", True),
+    ]:
+        state = loaded(mode, part)
+        pid = next((line.strip() for line in state.splitlines() if line.strip().startswith("pid =")), "无 PID")
+        ready = healthy(url, api)
+        print(f"{part}: {'已托管' if state else '未托管'} · {pid} · {'健康' if ready else '不可用'}")
+        ok = ok and bool(state) and ready
+    print(f"入口：http://127.0.0.1:{web_port}/\n日志：{directory}")
+    return ok
+
+
+def stop(mode):
+    for part in ("web", "server"):
+        if loaded(mode, part):
+            run(["launchctl", "bootout", f"{DOMAIN}/{label(mode, part)}"])
+    # 不停止 Docker：它可能同时服务于其他项目。
+
+
+def start(mode, web_port, api_port, database, directory):
+    for name in ("docker", "mvn", "node", "npm"):
+        if not shutil.which(name):
+            raise RuntimeError(f"缺少 {name}，请先安装并加入 PATH。")
+    # 拒绝误杀 IDE、其他工作副本或手动启动的进程。
+    for part, port in (("web", web_port), ("server", api_port)):
+        if loaded(mode, part):
+            continue
+        with socket.socket() as sock:
+            if sock.connect_ex(("127.0.0.1", port)) == 0:
+                raise RuntimeError(f"端口 {port} 已被其他进程占用，请先在原终端/IDE 停止该服务。")
+
+    if subprocess.run(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+        raise RuntimeError("Docker 尚未运行。使用 Colima 时先执行 colima start；否则先打开 Docker Desktop。")
+    exists = subprocess.run(["docker", "inspect", "workos-postgres"], stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL).returncode == 0
+    if exists:
+        run(["docker", "start", "workos-postgres"], stdout=subprocess.DEVNULL)
+    else:
+        run(["docker", "compose", "up", "-d", "postgres"], cwd=ROOT)
+    for _ in range(30):
+        if subprocess.run(["docker", "exec", "workos-postgres", "pg_isready", "-U", "workos"],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            break
+        time.sleep(1)
+    else:
+        raise RuntimeError("PostgreSQL 未就绪，请查看 docker logs workos-postgres。")
+    schema = capture(["docker", "exec", "workos-postgres", "psql", "-U", "workos", "-d", database,
+                      "-Atc", "SELECT to_regclass('public.item_project_link')"])
+    if schema != "item_project_link":
+        raise RuntimeError("数据库尚未执行 02 增量脚本。请按 docs/运行与验收.md 先备份再升级。")
+
+    directory.mkdir(parents=True, exist_ok=True)
+    commands = {}
+    if not loaded(mode, "server"):
+        java_home = capture(["/usr/libexec/java_home", "-v", "17"])
+        build_env = {**os.environ, "JAVA_HOME": java_home, "MAVEN_SKIP_RC": "true"}
+        print("打包后端（日志持续写入 build.log）…", flush=True)
+        with (directory / "build.log").open("w") as output:
+            run([shutil.which("mvn"), "-B", "package", "-DskipTests"], cwd=ROOT / "workos-server",
+                env=build_env, stdout=output, stderr=subprocess.STDOUT)
+        jars = list((ROOT / "workos-server/target").glob("workos-server-*.jar"))
+        if len(jars) != 1:
+            raise RuntimeError("未找到唯一的后端 jar，请检查 target 目录。")
+        commands["server"] = [str(Path(java_home) / "bin/java"), "-Dserver.address=127.0.0.1", "-jar", str(jars[0])]
+    if not loaded(mode, "web"):
+        vite = ROOT / "workos-web/node_modules/vite/bin/vite.js"
+        if not vite.exists():
+            run([shutil.which("npm"), "ci"], cwd=ROOT / "workos-web")
+        commands["web"] = [shutil.which("node"), str(vite), "--host", "127.0.0.1", "--port", str(web_port), "--strictPort"]
+
+    for part, command in commands.items():
+        log = directory / f"{part}.log"
+        if log.exists() and log.stat().st_size > 5_000_000:
+            log.replace(directory / f"{part}.previous.log")
+        config = {
+            "Label": label(mode, part), "ProgramArguments": command,
+            "WorkingDirectory": str(ROOT / ("workos-server" if part == "server" else "workos-web")),
+            "EnvironmentVariables": {
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "DB_HOST": "127.0.0.1", "DB_NAME": database, "DB_PORT": "5432",
+                "DB_USERNAME": "workos", "DB_PASSWORD": "workos", "SERVER_PORT": str(api_port),
+                "WORKOS_API_TARGET": f"http://127.0.0.1:{api_port}",
+                "VITE_WORKOS_DEMO": "true" if mode == "demo" else "false",
+            },
+            "RunAtLoad": True, "KeepAlive": True, "ThrottleInterval": 10,
+            "StandardOutPath": str(log), "StandardErrorPath": str(log),
+        }
+        path = directory / f"{part}.plist"
+        with path.open("wb") as output:
+            plistlib.dump(config, output)
+        path.chmod(0o600)
+        run(["launchctl", "bootstrap", DOMAIN, path])
+    print("等待前后端健康检查…", flush=True)
+    for _ in range(60):
+        if healthy(f"http://127.0.0.1:{api_port}/actuator/health") and healthy(f"http://127.0.0.1:{web_port}/api/projects?pageSize=1", True):
+            status(mode, web_port, api_port, directory)
+            return
+        time.sleep(1)
+    raise RuntimeError(f"服务未在等待期限内就绪，请运行 scripts/workos logs {mode} 查看原因；托管任务保留以便重试。")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=["start", "stop", "restart", "status", "logs"])
+    parser.add_argument("mode", nargs="?", choices=["work", "demo"], default="work")
+    args = parser.parse_args()
+    if sys.platform != "darwin":
+        parser.error("此入口使用 macOS launchd；其他平台见 docs/运行与验收.md 的手动启动方式。")
+    web_port, api_port, database = (5173, 8080, "workos") if args.mode == "work" else (5174, 8081, "workos_usability_20261011")
+    directory = ROOT / ".runtime" / args.mode
+    try:
+        if args.action in ("stop", "restart"):
+            stop(args.mode)
+            # launchd 卸载后给 Spring graceful shutdown 留出退出时间。
+            for _ in range(35):
+                with socket.socket() as sock:
+                    if sock.connect_ex(("127.0.0.1", api_port)) != 0:
+                        break
+                time.sleep(1)
+        if args.action in ("start", "restart"):
+            start(args.mode, web_port, api_port, database, directory)
+        elif args.action == "status":
+            return 0 if status(args.mode, web_port, api_port, directory) else 1
+        elif args.action == "logs":
+            paths = [p for p in directory.glob("*.log")]
+            if not paths:
+                print("暂无日志，请先 start。")
+            else:
+                run(["tail", "-n", "60", *paths])
+        elif args.action == "stop":
+            print("已停止托管的前后端；数据库继续运行，数据保留。")
+    except (RuntimeError, subprocess.CalledProcessError, OSError) as error:
+        print(f"启动/管理失败：{error}\n日志目录：{directory}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

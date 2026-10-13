@@ -24,7 +24,9 @@ client.interceptors.response.use(
   (error) => {
     const text = error?.response
       ? `请求失败（${error.response.status}）`
-      : '无法连接后端服务，请确认后端已启动'
+      : import.meta.env.VITE_WORKOS_DESKTOP === 'true'
+        ? '本地工作区暂时无法连接，请稍后重试；持续失败可退出并重新打开 WorkOS'
+        : '无法连接后端服务，请确认后端已启动'
     return Promise.reject(new Error(text))
   }
 )
@@ -40,7 +42,7 @@ async function request<T>(config: AxiosRequestConfig): Promise<T> {
 
 const http = {
   get: <T>(url: string, config?: AxiosRequestConfig) => request<T>({ ...config, method: 'GET', url }),
-  post: <T>(url: string, data?: unknown) => request<T>({ method: 'POST', url, data }),
+  post: <T>(url: string, data?: unknown, config?: AxiosRequestConfig) => request<T>({ ...config, method: 'POST', url, data }),
   put: <T>(url: string, data?: unknown) => request<T>({ method: 'PUT', url, data }),
   delete: <T>(url: string) => request<T>({ method: 'DELETE', url })
 }

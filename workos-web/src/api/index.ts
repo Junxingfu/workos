@@ -1,4 +1,9 @@
 import http from './client'
+export interface DesktopStorageInfo { directory: string; example: boolean; canImport: boolean; counts: Record<string, number>; backups: string[] }
+export const fetchDesktopStorage = () => http.get<DesktopStorageInfo>('/desktop/storage')
+export const backupDesktop = () => http.post<string>('/desktop/backup', {}, { timeout: 120000 })
+export const importDesktop = (database: string) => http.post<Record<string, number>>('/desktop/import', { database }, { timeout: 120000 })
+export const restoreDesktop = (name: string) => http.post<Record<string, number>>('/desktop/restore', { name }, { timeout: 120000 })
 export { fail } from './client'
 import type {
   BasePageResult,

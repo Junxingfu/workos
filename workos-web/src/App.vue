@@ -11,7 +11,7 @@ import {
   InboxOutlined,
   UnorderedListOutlined
 } from '@ant-design/icons-vue'
-import { fetchInbox } from '@/api'
+import { fetchInbox, fetchDesktopStorage } from '@/api'
 import QuickCapture from '@/components/QuickCapture.vue'
 import { useCaptureRefresh } from '@/composables/useCaptureRefresh'
 
@@ -21,7 +21,8 @@ import { useCaptureRefresh } from '@/composables/useCaptureRefresh'
  */
 const route = useRoute()
 const router = useRouter()
-const isDemo = import.meta.env.VITE_WORKOS_DEMO === 'true'
+const isDemo = ref(import.meta.env.VITE_WORKOS_DEMO === 'true')
+const isDesktop = import.meta.env.VITE_WORKOS_DESKTOP === 'true'
 dayjs.locale('zh-cn')
 
 const captureOpen = ref(false)
@@ -53,6 +54,7 @@ const navItems = [
   { key: 'projects', label: '项目', path: '/projects', icon: FolderOutlined },
   { key: 'daily', label: '日报', path: '/daily', icon: CalendarOutlined }
 ]
+if (isDesktop) navItems.push({ key: 'desktop-data', label: '数据与备份', path: '/desktop-data', icon: FolderOutlined })
 
 function isActive(key: string) {
   if (key === 'projects') return String(route.name ?? '').startsWith('project')
@@ -86,6 +88,7 @@ function onShortcut(event: KeyboardEvent) {
 useCaptureRefresh(loadInboxCount)
 watch(() => route.fullPath, loadInboxCount)
 onMounted(() => {
+  if (isDesktop) fetchDesktopStorage().then(info => { isDemo.value = info.example }).catch(() => {})
   loadInboxCount()
   window.addEventListener('keydown', onShortcut)
   window.addEventListener('workos:inbox-changed', loadInboxCount)

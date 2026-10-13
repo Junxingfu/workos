@@ -1,0 +1,17 @@
+server:
+  address: 127.0.0.1
+  port: 0
+spring:
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+  web:
+    resources:
+      static-locations: classpath:/desktop-web/
+mybatis-plus:
+  mapper-locations: classpath:/desktop/mapper/*.xml
+  type-handlers-package: com.workos.desktop.types
+workos:
+  database: sqlite
+  desktop:
+    directory: ${WORKOS_DATA_DIR}
+    token: ${WORKOS_DESKTOP_TOKEN:}

@@ -21,3 +21,6 @@ dist-ssr/
 *.log
 logs/
 .runtime/
+workos-desktop/src-tauri/resources/
+workos-web/dist-desktop/
+scripts/__pycache__/

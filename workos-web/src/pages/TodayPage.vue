@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import dayjs from 'dayjs'
 import { useRouter } from 'vue-router'
 import QuickCapture from '@/components/QuickCapture.vue'
@@ -177,7 +177,24 @@ function onAction(action: ItemRowAction, item: Item) {
 }
 
 useCaptureRefresh(load)
-onMounted(load)
+let clockRefresh: ReturnType<typeof setInterval> | undefined
+function refreshVisible() {
+  if (!document.hidden && !loading.value && !drawerOpen.value) void load()
+}
+onMounted(() => {
+  void load()
+  if (import.meta.env.VITE_WORKOS_DESKTOP === 'true') {
+    // 唤醒和跨日后重新读取服务端业务日；只更新列表，不重建记录输入或抽屉。
+    window.addEventListener('focus', refreshVisible)
+    document.addEventListener('visibilitychange', refreshVisible)
+    clockRefresh = setInterval(refreshVisible, 60000)
+  }
+})
+onUnmounted(() => {
+  window.removeEventListener('focus', refreshVisible)
+  document.removeEventListener('visibilitychange', refreshVisible)
+  if (clockRefresh) clearInterval(clockRefresh)
+})
 </script>
 
 <template>

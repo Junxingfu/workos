@@ -7,6 +7,7 @@ import com.workos.item.enums.ItemStatus;
 import com.workos.item.model.request.*;
 import com.workos.item.service.ItemService;
 import com.workos.project.model.request.ProjectCreateReq;
+import com.workos.project.model.request.ProjectContextUpdateReq;
 import com.workos.project.service.ProjectService;
 import com.workos.today.service.TodayService;
 import com.workos.worklog.model.request.WorkLogCreateReq;
@@ -61,6 +62,22 @@ class ProjectAssociationIntegrationTest {
         assertTrue(inProject(id, other, ItemStatus.DOING));
         assertEquals(1L, projects.detail(other).getStatistics().getDoing());
         assertEquals(0L, projects.detail(other).getStatistics().getTodo());
+    }
+
+    @Test void staleContextDraftCannotOverwriteNewerSavedFacts() {
+        Long id = project("现状版本回归");
+        ProjectContextUpdateReq req = new ProjectContextUpdateReq();
+        req.setVersion(projects.context(id).getVersion()); req.setCurrentFocus("第一份现状");
+        var saved = projects.updateContext(id, req);
+        assertTrue(saved.getVersion() > req.getVersion());
+        req.setCurrentFocus("过期的空白页草稿");
+        assertThrows(BizException.class, () -> projects.updateContext(id, req));
+        req.setVersion(saved.getVersion()); req.setCurrentFocus("新进展");
+        var updated = projects.updateContext(id, req);
+        assertTrue(updated.getVersion() > saved.getVersion());
+        req.setCurrentFocus("旧进展");
+        assertThrows(BizException.class, () -> projects.updateContext(id, req));
+        assertEquals("新进展", projects.context(id).getCurrentFocus());
     }
 
     @Test void workLogAndDailyBelongToMainProjectOnce() {

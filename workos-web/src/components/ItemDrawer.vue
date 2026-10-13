@@ -21,7 +21,7 @@ import {
 import type { Item, ItemActivity, ItemPriority, ItemStatus, Project, WorkLog } from '@/types'
 
 /**
- * 事项操作中心（design.md §19 §36 §37）
+ * 事项操作中心（见 docs/产品与交互.md、docs/开发规范.md）
  * 第一屏：标题 / 项目·状态·优先级 / 描述 / 现在需要做什么
  * 属性改动即时保存；标题与描述走显式保存。
  */
@@ -107,7 +107,7 @@ const isWaiting = computed(() => item.value?.status === 'WAITING')
 const canFollowUp = computed(() => item.value?.followUpDue || isWaiting.value)
 
 /**
- * Drawer 的主要动作随状态变化（前端规范.md §6.3）：
+ * Drawer 的主要动作随状态变化（见 docs/产品与交互.md、docs/开发规范.md）：
  * 用户真正想做的是「推进这件事」，不是「保存」。
  */
 const primary = computed<{ status: ItemStatus; label: string } | null>(() => {
@@ -441,7 +441,7 @@ watch(
 
         <ItemStateFlow :item="item" :disabled="busy" @transition="onTransition" />
 
-        <div class="drawer-projects">
+        <div class="drawer-projects" @keydown.esc.stop>
           <label for="item-main-project">主项目</label>
           <a-select id="item-main-project" aria-label="主项目" :value="item.projectId ?? undefined" :disabled="busy || relatedEditing" show-search option-filter-prop="label" placeholder="未分类（可选）" :allow-clear="!item.relatedProjects?.length" :options="projectOptions" @change="(value: string) => patch({ projectId: value, clearProject: !value }, '已修改主项目')" />
           <label for="item-related-projects">关联项目</label>
@@ -470,7 +470,7 @@ watch(
           <span v-if="item.waitingDays" class="meta-text">已等 {{ item.waitingDays }} 天</span>
         </div>
 
-        <!-- 先给工作语义，再给数据库属性：打开抽屉第一个要回答的是「我现在该对它做什么」（UX_RULES §23） -->
+        <!-- 先给工作语义，再给数据库属性：打开抽屉第一个要回答的是「我现在该对它做什么」（见 docs/产品与交互.md、docs/开发规范.md） -->
         <section v-if="item.type === 'TASK' && item.status !== 'INBOX' && item.status !== 'DONE' && item.status !== 'CANCELLED'" class="drawer-block">
           <div class="section__head">
             <h3 class="section-title">等待与跟进</h3>
@@ -604,7 +604,7 @@ watch(
       </template>
     </a-spin>
 
-    <!-- 主要动作固定在底部：打开就知道「这件事下一步是什么」（前端规范.md §6.2 §6.3） -->
+    <!-- 主要动作固定在底部：打开就知道「这件事下一步是什么」（见 docs/产品与交互.md、docs/开发规范.md） -->
     <div v-if="primary" class="drawer-footer">
       <span v-if="item?.status === 'INBOX' && item.type === 'TASK'" class="meta-text">收下后，在今天或全部事项里安排计划</span>
       <a-button v-if="primary.status !== 'DONE' && item?.allowedTransitions?.includes('DONE')" :disabled="busy" @click="onTransition('DONE')">完成事项</a-button>

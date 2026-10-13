@@ -4,7 +4,7 @@ import dayjs from 'dayjs'
 import type { Item, ItemRowAction, ItemStatus } from '@/types'
 
 /**
- * ItemRow：WorkOS 最重要的组件（对齐 前端规范.md §5.1 §5.2 §5.3）
+ * ItemRow：WorkOS 最重要的组件（见 docs/产品与交互.md、docs/开发规范.md）
  *
  * 展示组件，不推导业务规则：
  * - 能出现哪些动作完全由后端 allowedTransitions 决定
@@ -91,7 +91,7 @@ const dateText = computed(() => {
   if (item.plannedDate) {
     return `计划 ${dayjs(item.plannedDate).format('MM-DD')}`
   }
-  // 还没整理的记录显示捕获时间（前端规范.md §7.2：行右侧显示 10:32）
+  // 还没整理的记录显示捕获时间（见 docs/产品与交互.md、docs/开发规范.md）
   if (item.status === 'INBOX' && item.createdAt) return dayjs(item.createdAt).format('HH:mm')
   return ''
 })

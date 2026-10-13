@@ -10,7 +10,7 @@ import { useListActions } from '@/composables/useListActions'
 import type { BasePageResult, Item, ItemPriority, ItemRowAction, ItemStatus, Project } from '@/types'
 
 /**
- * 全部事项：查询与管理，不是 Dashboard（对齐 前端规范.md §7.3）
+ * 全部事项：查询与管理，不是 Dashboard（见 docs/产品与交互.md、docs/开发规范.md）
  * 默认「未完成」，已完成的事不占视线。
  */
 const FILTERS: Array<{ key: string; label: string; status?: ItemStatus }> = [

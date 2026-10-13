@@ -19,6 +19,8 @@ public class ProjectContextResp implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
+    private Integer version;
+
     private String goal;
 
     private String currentFocus;

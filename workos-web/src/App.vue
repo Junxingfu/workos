@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import zhCN from 'ant-design-vue/es/locale/zh_CN'
+import dayjs from 'dayjs'
+import 'dayjs/locale/zh-cn'
 import {
   CalendarOutlined,
   CarryOutOutlined,
@@ -13,12 +16,13 @@ import QuickCapture from '@/components/QuickCapture.vue'
 import { useCaptureRefresh } from '@/composables/useCaptureRefresh'
 
 /**
- * App Shell：Sidebar + Main（对齐 前端规范.md §4.1 §4.2）
+ * App Shell：Sidebar + Main（见 docs/产品与交互.md、docs/开发规范.md）
  * Sidebar 是导航，不是视觉主体；Active 用左侧色条 + 浅底，不做彩色 Pill。
  */
 const route = useRoute()
 const router = useRouter()
 const isDemo = import.meta.env.VITE_WORKOS_DEMO === 'true'
+dayjs.locale('zh-cn')
 
 const captureOpen = ref(false)
 const captureRef = ref()
@@ -93,7 +97,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <a-config-provider :theme="theme">
+  <a-config-provider :theme="theme" :locale="zhCN">
     <div class="app-shell">
       <aside class="sidebar">
         <div class="sidebar__brand">WorkOS</div>
@@ -226,5 +230,15 @@ onUnmounted(() => {
   padding-left: var(--space-1);
   font-size: 12px;
   color: var(--color-text-tertiary);
+}
+
+@media (max-width: 760px) {
+  .app-shell { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; position: static; flex-direction: row; flex-wrap: wrap; gap: 8px; border-right: 0; border-bottom: 1px solid var(--color-border); }
+  .sidebar__brand, .sidebar__hint { display: none; }
+  .sidebar__nav { flex-direction: row; flex-wrap: wrap; }
+  .nav-item { width: auto; }
+  .sidebar__capture { margin: 0 0 0 auto; padding: 0; }
+  .app-content { padding: 16px; }
 }
 </style>

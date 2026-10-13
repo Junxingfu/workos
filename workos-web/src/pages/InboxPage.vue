@@ -11,7 +11,7 @@ import { useListActions } from '@/composables/useListActions'
 import type { InboxResp, Item, ItemPriority, ItemRowAction, Project } from '@/types'
 
 /**
- * Inbox 是处理队列，不是长期列表（design.md §29~§31）
+ * Inbox 是处理队列，不是长期列表（见 docs/产品与交互.md、docs/开发规范.md）
  * 防黑洞的两个出口：逐条整理 / 先都收下
  */
 const data = ref<InboxResp | null>(null)
@@ -103,7 +103,7 @@ function setProject(item: Item, value?: string) {
   })
 }
 
-/** 收下 = 承认它是正式工作：状态转为待办，之后由「还没安排」决定什么时候做（UX_RULES §7 §9） */
+/** 收下 = 承认它是正式工作：状态转为待办，之后由「还没安排」决定什么时候做（见 docs/产品与交互.md、docs/开发规范.md） */
 async function accept(item: Item) {
   const accepted = await run(item, 'accept', () => transition(item.id, { toStatus: item.type === 'NOTE' ? 'DONE' : 'TODO', version: item.version }), {
     tip: item.type === 'NOTE' ? '笔记已保存' : '已收下，可在今天页安排'

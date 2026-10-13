@@ -1,6 +1,6 @@
 /* ============================================================
  * WorkOS 设计令牌与全局样式
- * 对齐 docs/archive/前端规范.md；视觉方向：Calm / Dense / Focused / Low decoration
+ * 对齐 docs/开发规范.md；视觉方向：Calm / Dense / Focused / Low decoration
  *
  * 硬规则：
  * - Item Row / Section / 页面圆角为 0，不做卡片
@@ -291,6 +291,8 @@ body {
   align-items: baseline;
   gap: var(--space-2);
 }
+
+.item-row__head > .meta-text { flex-shrink: 0; white-space: nowrap; }
 
 .item-row__title {
   flex: 1;
@@ -587,3 +589,11 @@ body {
 }
 
 .item-row__sub > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .item-row { flex-wrap: wrap; }
+  .item-row__body { flex-basis: calc(100% - 26px); }
+  .item-row__head { flex-wrap: wrap; gap: 4px 8px; }
+  .item-row__title { flex-basis: 100%; order: -1; }
+  .item-row__actions { margin-left: 26px; flex-wrap: wrap; }
+}

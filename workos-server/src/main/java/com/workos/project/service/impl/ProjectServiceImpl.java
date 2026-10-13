@@ -233,15 +233,18 @@ public class ProjectServiceImpl implements ProjectService {
         ProjectContextPO po = projectContextMapper.selectOne(new LambdaQueryWrapper<ProjectContextPO>()
                 .eq(ProjectContextPO::getProjectId, id));
         boolean create = Objects.isNull(po);
+        checkVersion(create ? 0 : po.getVersion(), req.getVersion());
         if (create) {
-            po = ProjectContextPO.builder().projectId(id).build();
+            po = ProjectContextPO.builder().projectId(id).version(1).build();
         }
         mergeContext(po, req);
         po.setUpdatedAt(timeZoneHolder.now());
         if (create) {
             projectContextMapper.insert(po);
         } else {
-            projectContextMapper.updateById(po);
+            if (projectContextMapper.updateById(po) == 0) {
+                throw new BizException(ResponseCode.VERSION_CONFLICT);
+            }
         }
         return projectConverter.toResp(withStaleDays(projectConverter.toDTO(po)));
     }
@@ -379,6 +382,7 @@ public class ProjectServiceImpl implements ProjectService {
         if (Objects.isNull(po)) {
             ProjectContextDTO empty = new ProjectContextDTO();
             empty.setProjectId(projectId);
+            empty.setVersion(0);
             empty.setStaleDays(0L);
             return empty;
         }

@@ -12,7 +12,7 @@ import { useListActions } from '@/composables/useListActions'
 import type { Item, ItemRowAction, TodayResp, WorkLog } from '@/types'
 
 /**
- * 今天 = 工作驾驶舱（对齐 前端规范.md §7.1）
+ * 今天 = 工作驾驶舱（见 docs/产品与交互.md、docs/开发规范.md）
  * 左主区回答「现在做什么」，右栏回答「还有什么上下文不能忘」。
  * 固定顺序：今日计划 → 今天别忘了（逾期→今日到期→待跟进）→ 还没安排。
  */

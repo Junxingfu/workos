@@ -8,7 +8,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import type { BasePageResult, Project } from '@/types'
 
 /**
- * 项目列表回答：我有哪些项目、各自现在什么状态（design.md §32.1）
+ * 项目列表回答：我有哪些项目、各自现在什么状态（见 docs/产品与交互.md、docs/开发规范.md）
  * 用列表，不用卡片网格。
  */
 const router = useRouter()

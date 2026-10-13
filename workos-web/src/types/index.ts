@@ -110,6 +110,7 @@ export interface InboxResp {
 }
 
 export interface ProjectContext {
+  version?: number
   goal?: string | null
   currentFocus?: string | null
   progressNote?: string | null

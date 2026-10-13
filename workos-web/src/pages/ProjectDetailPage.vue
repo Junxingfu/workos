@@ -21,7 +21,7 @@ import { useListActions } from '@/composables/useListActions'
 import type { Item, ItemRowAction, Project } from '@/types'
 
 /**
- * 项目详情：10 秒恢复项目上下文（design.md §33~§35）
+ * 项目详情：10 秒恢复项目上下文（见 docs/产品与交互.md、docs/开发规范.md）
  * 默认结构化阅读视图，编辑是显式动作；不做 Markdown 大编辑器。
  */
 const route = useRoute()
@@ -279,46 +279,46 @@ onMounted(load)
           <a-row :gutter="16">
             <a-col :span="8">
               <a-form-item label="当前重点">
-                <a-textarea v-model:value="form.currentFocus" :rows="2" />
+                <a-textarea aria-label="当前重点" v-model:value="form.currentFocus" :rows="2" />
               </a-form-item>
             </a-col>
             <a-col :span="8">
               <a-form-item label="当前阻塞">
-                <a-textarea v-model:value="form.blocker" :rows="2" />
+                <a-textarea aria-label="当前阻塞" v-model:value="form.blocker" :rows="2" />
               </a-form-item>
             </a-col>
             <a-col :span="8">
               <a-form-item label="下一步">
-                <a-textarea v-model:value="form.nextAction" :rows="2" />
+                <a-textarea aria-label="下一步" v-model:value="form.nextAction" :rows="2" />
               </a-form-item>
             </a-col>
           </a-row>
           <a-row :gutter="16">
             <a-col :span="12">
               <a-form-item label="当前进展">
-                <a-textarea v-model:value="form.progressNote" :rows="2" />
+                <a-textarea aria-label="当前进展" v-model:value="form.progressNote" :rows="2" />
               </a-form-item>
             </a-col>
             <a-col :span="12">
               <a-form-item label="当前目标">
-                <a-textarea v-model:value="form.goal" :rows="2" />
+                <a-textarea aria-label="当前目标" v-model:value="form.goal" :rows="2" />
               </a-form-item>
             </a-col>
           </a-row>
           <a-row :gutter="16">
             <a-col :span="12">
               <a-form-item label="关键联系人">
-                <a-input v-model:value="form.keyPeople" />
+                <a-input aria-label="关键联系人" v-model:value="form.keyPeople" />
               </a-form-item>
             </a-col>
             <a-col :span="12">
               <a-form-item label="关键链接">
-                <a-input v-model:value="form.keyLinks" />
+                <a-input aria-label="关键链接" v-model:value="form.keyLinks" />
               </a-form-item>
             </a-col>
           </a-row>
           <a-form-item label="备注">
-            <a-textarea v-model:value="form.notesMarkdown" :rows="4" />
+            <a-textarea aria-label="备注" v-model:value="form.notesMarkdown" :rows="4" />
           </a-form-item>
         </a-form>
 
@@ -336,7 +336,7 @@ onMounted(load)
         <p v-else class="meta-text">当前没有待办；收下并归属到本项目的事项会出现在这里。</p>
       </section>
 
-      <!-- 现状之后直接进入这个项目正在做的事（前端规范.md §7.5） -->
+      <!-- 现状之后直接进入这个项目正在做的事（见 docs/产品与交互.md、docs/开发规范.md） -->
       <section v-if="doingItems.length" class="section">
         <div class="section__head">
           <h2 class="section-title">进行中</h2>

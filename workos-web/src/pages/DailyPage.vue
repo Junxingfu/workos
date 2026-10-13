@@ -18,7 +18,7 @@ const preview = ref('')
 const sourceCount = ref(0)
 const dirty = ref(false)
 
-/** 未保存的正文不能被静默丢弃：切换日期或离开页面前先问一句（UX_RULES §35） */
+/** 未保存的正文不能被静默丢弃：切换日期或离开页面前先问一句（见 docs/产品与交互.md、docs/开发规范.md） */
 function confirmDiscard(text: string): Promise<boolean> {
   return new Promise((resolve) => {
     Modal.confirm({
@@ -38,7 +38,7 @@ async function onDateChange(value: Dayjs | null) {
   await applyDate(value)
 }
 
-/** 切换日期前保护未保存正文（UX_RULES §35） */
+/** 切换日期前保护未保存正文（见 docs/产品与交互.md、docs/开发规范.md） */
 async function applyDate(next: Dayjs) {
   if (dirty.value) {
     const discard = await confirmDiscard(

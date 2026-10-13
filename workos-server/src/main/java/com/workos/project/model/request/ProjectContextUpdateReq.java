@@ -18,6 +18,9 @@ public class ProjectContextUpdateReq implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
+    @Schema(title = "编辑开始时的版本")
+    private Integer version;
+
     @Schema(title = "目标")
     private String goal;
 

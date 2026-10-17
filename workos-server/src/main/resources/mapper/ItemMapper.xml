@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.workos.item.data.mapper.ItemMapper">
+<mapper namespace="com.workos.item.infrastructure.persistence.mapper.ItemMapper">
 
     <sql id="allColumns">
         id, project_id, title, description, item_type, status, priority,
@@ -11,7 +11,7 @@
     </sql>
 
     <!-- ① 今日计划 -->
-    <select id="selectPlan" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectPlan" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE planned_date = #{date}
@@ -21,7 +21,7 @@
     </select>
 
     <!-- ② 逾期：只统计 TODO / DOING；已在别人手里的用"待跟进"表达 -->
-    <select id="selectOverdue" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectOverdue" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE due_at &lt; #{todayStart}
@@ -31,7 +31,7 @@
     </select>
 
     <!-- ③ 今日到期 -->
-    <select id="selectDueToday" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectDueToday" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE due_at &gt;= #{todayStart}
@@ -42,7 +42,7 @@
     </select>
 
     <!-- ④ 待跟进：到点该主动推动（含等待到期） -->
-    <select id="selectFollowUpDue" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectFollowUpDue" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE next_follow_up_at &lt;= #{now}
@@ -52,7 +52,7 @@
     </select>
 
     <!-- ⑤ 等待中：还在别人手里，且未到跟进时间 -->
-    <select id="selectWaiting" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectWaiting" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE status = 'WAITING'
@@ -62,7 +62,7 @@
     </select>
 
     <!-- ⑥ 待安排：普通待办也可以选择今天做，按优先级排序 -->
-    <select id="selectPendingDecision" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectPendingDecision" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE planned_date IS NULL
@@ -78,7 +78,7 @@
         LIMIT 5
     </select>
 
-    <select id="selectCarriedOverPlan" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectCarriedOverPlan" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE planned_date &lt; #{date}
@@ -87,7 +87,7 @@
         ORDER BY planned_date ASC, plan_rank ASC NULLS LAST, id ASC
     </select>
 
-    <select id="selectLastLogs" resultType="com.workos.item.model.dto.LastLogDTO">
+    <select id="selectLastLogs" resultType="com.workos.item.application.readmodel.LastLogDTO">
         SELECT DISTINCT ON (item_id) item_id, content, occurred_at
         FROM work_log
         WHERE item_id IN
@@ -97,7 +97,7 @@
         ORDER BY item_id, occurred_at DESC
     </select>
 
-    <select id="selectLastActivities" resultType="com.workos.item.model.dto.LastActivityDTO">
+    <select id="selectLastActivities" resultType="com.workos.item.application.readmodel.LastActivityDTO">
         SELECT DISTINCT ON (item_id) item_id, activity_type, occurred_at
         FROM item_activity
         WHERE item_id IN
@@ -116,7 +116,7 @@
         (SELECT id AS item_id, project_id FROM item WHERE project_id IS NOT NULL
          UNION SELECT item_id, project_id FROM item_project_link) membership
     </sql>
-    <select id="selectProjectTodayCount" resultType="com.workos.project.model.dto.ProjectCountRowDTO">
+    <select id="selectProjectTodayCount" resultType="com.workos.project.application.readmodel.ProjectCountRowDTO">
         SELECT membership.project_id, COUNT(*) AS cnt
         FROM item JOIN <include refid="projectMembership"/> ON membership.item_id = item.id
         WHERE planned_date = #{today}
@@ -129,7 +129,7 @@
     </select>
 
     <!-- 待跟进：已过期且未处理 -->
-    <select id="selectFollowUpOverdue" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectFollowUpOverdue" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE next_follow_up_at &lt; #{todayStart}
@@ -138,7 +138,7 @@
     </select>
 
     <!-- 待跟进：今天到点 -->
-    <select id="selectFollowUpToday" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectFollowUpToday" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE next_follow_up_at &gt;= #{todayStart}
@@ -148,7 +148,7 @@
     </select>
 
     <!-- 待跟进：未来 7 天内 -->
-    <select id="selectFollowUpThisWeek" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectFollowUpThisWeek" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE next_follow_up_at &gt;= #{from}
@@ -158,7 +158,7 @@
     </select>
 
     <!-- 等待中：跟进工作台口径，不限计划日期 -->
-    <select id="selectWaitingAll" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectWaitingAll" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE status = 'WAITING'
@@ -167,7 +167,7 @@
     </select>
 
     <!-- 最近完成 -->
-    <select id="selectRecentlyDone" resultType="com.workos.item.data.entity.ItemPO">
+    <select id="selectRecentlyDone" resultType="com.workos.item.infrastructure.persistence.entity.ItemPO">
         SELECT <include refid="allColumns"/>
         FROM item
         WHERE status = 'DONE'
@@ -177,7 +177,7 @@
     </select>
 
     <!-- 按等待对象聚合：谁在欠我东西 -->
-    <select id="selectWaitingByPerson" resultType="com.workos.followup.model.dto.PersonCountRowDTO">
+    <select id="selectWaitingByPerson" resultType="com.workos.followup.application.readmodel.PersonCountRowDTO">
         SELECT waiting_for AS person, COUNT(*) AS cnt
         FROM item
         WHERE status = 'WAITING'
@@ -188,7 +188,7 @@
     </select>
 
     <!-- 项目维度统计：状态计数 + 最近活动时间 -->
-    <select id="selectProjectStatRows" resultType="com.workos.project.model.dto.ProjectStatRowDTO">
+    <select id="selectProjectStatRows" resultType="com.workos.project.application.readmodel.ProjectStatRowDTO">
         SELECT membership.project_id, status, COUNT(*) AS cnt, MAX(updated_at) AS last_at
         FROM item JOIN <include refid="projectMembership"/> ON membership.item_id = item.id
         WHERE membership.project_id IN

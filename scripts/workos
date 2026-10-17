@@ -96,10 +96,9 @@ def start(mode, web_port, api_port, database, directory):
         time.sleep(1)
     else:
         raise RuntimeError("PostgreSQL 未就绪，请查看 docker logs workos-postgres。")
-    schema = capture(["docker", "exec", "workos-postgres", "psql", "-U", "workos", "-d", database,
-                      "-Atc", "SELECT to_regclass('public.item_project_link')"])
-    if schema != "item_project_link":
-        raise RuntimeError("数据库尚未执行 02 增量脚本。请按 docs/运行与验收.md 先备份再升级。")
+    # 验证库存在即可；结构识别、旧库接管及升级统一由 Flyway 启动时完成。
+    capture(["docker", "exec", "workos-postgres", "psql", "-U", "workos", "-d", database,
+             "-Atc", "SELECT 1"])
 
     directory.mkdir(parents=True, exist_ok=True)
     commands = {}

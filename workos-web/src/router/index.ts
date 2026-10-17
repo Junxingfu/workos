@@ -3,6 +3,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: '/exchange', name: 'exchange', component: () => import('@/pages/ExchangePage.vue') },
+    { path: '/notifications', name: 'notifications', component: () => import('@/pages/NotificationsPage.vue') },
+    { path: '/focus', name: 'focus', component: () => import('@/pages/FocusPage.vue') },
     ...(import.meta.env.VITE_WORKOS_DESKTOP === 'true' ? [{ path: '/desktop-data', name: 'desktop-data', component: () => import('@/pages/DesktopDataPage.vue') }] : []),
     { path: '/', redirect: '/today' },
     { path: '/today', name: 'today', component: () => import('@/pages/TodayPage.vue') },

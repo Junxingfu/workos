@@ -1,3 +1,4 @@
+import { notifyWorkspaceChanged } from '@/composables/useCaptureRefresh'
 import axios, { type AxiosRequestConfig } from 'axios'
 import { message } from 'ant-design-vue'
 import type { ApiResponse } from '@/types'
@@ -19,6 +20,7 @@ client.interceptors.response.use(
       const text = body.messageArray?.length ? body.messageArray.join('；') : body.message
       return Promise.reject(new Error(text || '操作失败'))
     }
+    if (body?.code === 0 && response.config.method && ['post', 'put', 'delete'].includes(response.config.method)) notifyWorkspaceChanged()
     return response
   },
   (error) => {
@@ -41,6 +43,14 @@ async function request<T>(config: AxiosRequestConfig): Promise<T> {
 }
 
 const http = {
+  blob: async (url: string, config?: AxiosRequestConfig): Promise<Blob> => {
+    const response = await client.get<Blob>(url, { ...config, responseType: 'blob' })
+    if (response.data.type.includes('json')) {
+      const error = JSON.parse(await response.data.text())
+      throw new Error(error.message || '导出失败')
+    }
+    return response.data
+  },
   get: <T>(url: string, config?: AxiosRequestConfig) => request<T>({ ...config, method: 'GET', url }),
   post: <T>(url: string, data?: unknown, config?: AxiosRequestConfig) => request<T>({ ...config, method: 'POST', url, data }),
   put: <T>(url: string, data?: unknown) => request<T>({ method: 'PUT', url, data }),

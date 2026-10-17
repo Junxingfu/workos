@@ -24,7 +24,7 @@ run(['npm', 'run', 'build', '--', '--outDir', 'dist-desktop'], web, env)
 run(['mvn', '-B', '-Pdesktop', 'package', '-DskipTests'], ROOT / 'workos-server', env)
 resources = ROOT / 'workos-desktop/src-tauri/resources'
 resources.mkdir(parents=True, exist_ok=True)
-shutil.copy2(ROOT / 'workos-server/target/workos-server-0.1.0-SNAPSHOT.jar', resources / 'workos-server.jar')
+shutil.copy2(ROOT / 'workos-server/target-desktop/workos-server-0.1.0-SNAPSHOT.jar', resources / 'workos-server.jar')
 runtime = resources / 'runtime'
 if runtime.exists(): shutil.rmtree(runtime)
 run([java / 'bin/jlink', '--add-modules', 'java.se,jdk.unsupported,jdk.crypto.ec,jdk.management,jdk.zipfs', '--strip-debug', '--no-header-files', '--no-man-pages', '--output', runtime])

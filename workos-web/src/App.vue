@@ -11,7 +11,7 @@ import {
   InboxOutlined,
   UnorderedListOutlined
 } from '@ant-design/icons-vue'
-import { fetchInbox, fetchDesktopStorage } from '@/api'
+import { fetchInbox, fetchDesktopStorage, fetchAttention } from '@/api'
 import QuickCapture from '@/components/QuickCapture.vue'
 import { useCaptureRefresh } from '@/composables/useCaptureRefresh'
 
@@ -28,6 +28,11 @@ dayjs.locale('zh-cn')
 const captureOpen = ref(false)
 const captureRef = ref()
 const inboxCount = ref(0)
+const attentionCount = ref(0)
+let attentionTimer: ReturnType<typeof setInterval>
+async function loadAttentionCount() {
+  try { attentionCount.value = (await fetchAttention()).filter(n => !n.read && (!n.snoozedUntil || Date.parse(n.snoozedUntil) <= Date.now())).length } catch { /* 下次轮询重试；保留上次数字 */ }
+}
 
 /** Ant Design 负责行为，WorkOS 负责视觉：主色与语义色在这里统一 */
 const theme = {
@@ -52,7 +57,9 @@ const navItems = [
   { key: 'inbox', label: '收件箱', path: '/inbox', icon: InboxOutlined },
   { key: 'items', label: '全部事项', path: '/items', icon: UnorderedListOutlined },
   { key: 'projects', label: '项目', path: '/projects', icon: FolderOutlined },
-  { key: 'daily', label: '日报', path: '/daily', icon: CalendarOutlined }
+  { key: 'daily', label: '日报', path: '/daily', icon: CalendarOutlined },
+  { key: 'notifications', label: '通知', path: '/notifications', icon: InboxOutlined },
+  { key: 'exchange', label: 'Excel 批量维护', path: '/exchange', icon: UnorderedListOutlined }
 ]
 if (isDesktop) navItems.push({ key: 'desktop-data', label: '数据与备份', path: '/desktop-data', icon: FolderOutlined })
 
@@ -78,6 +85,7 @@ async function loadInboxCount() {
 }
 
 function onShortcut(event: KeyboardEvent) {
+  if (route.name === 'focus') return
   if (event.defaultPrevented || event.isComposing || event.repeat) return
   if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.code === 'KeyK') {
     event.preventDefault()
@@ -87,13 +95,26 @@ function onShortcut(event: KeyboardEvent) {
 
 useCaptureRefresh(loadInboxCount)
 watch(() => route.fullPath, loadInboxCount)
+function openWidgetItem(event: Event) {
+  const id = (event as CustomEvent<string>).detail
+  if (/^\d+$/.test(id)) void router.push({ path: '/items', query: { itemId: id } })
+}
 onMounted(() => {
+  window.addEventListener('workos:open-item', openWidgetItem)
   if (isDesktop) fetchDesktopStorage().then(info => { isDemo.value = info.example }).catch(() => {})
   loadInboxCount()
+  loadAttentionCount()
+  attentionTimer = setInterval(loadAttentionCount, 60000)
+  window.addEventListener('workos:attention-changed', loadAttentionCount)
+  window.addEventListener('focus', loadAttentionCount)
   window.addEventListener('keydown', onShortcut)
   window.addEventListener('workos:inbox-changed', loadInboxCount)
 })
 onUnmounted(() => {
+  window.removeEventListener('workos:open-item', openWidgetItem)
+  clearInterval(attentionTimer)
+  window.removeEventListener('workos:attention-changed', loadAttentionCount)
+  window.removeEventListener('focus', loadAttentionCount)
   window.removeEventListener('keydown', onShortcut)
   window.removeEventListener('workos:inbox-changed', loadInboxCount)
 })
@@ -101,8 +122,8 @@ onUnmounted(() => {
 
 <template>
   <a-config-provider :theme="theme" :locale="zhCN">
-    <div class="app-shell">
-      <aside class="sidebar">
+    <div class="app-shell" :class="{ 'widget-shell': route.name === 'focus' }">
+      <aside v-if="route.name !== 'focus'" class="sidebar">
         <div class="sidebar__brand">WorkOS</div>
 
         <nav class="sidebar__nav">
@@ -116,6 +137,7 @@ onUnmounted(() => {
           >
             <component :is="nav.icon" class="nav-item__icon" />
             <span class="nav-item__label">{{ nav.label }}</span>
+            <span v-if="nav.key === 'notifications' && attentionCount" class="nav-item__count">{{ attentionCount }}</span>
             <span v-if="nav.key === 'inbox' && inboxCount" class="nav-item__count">
               {{ inboxCount }}
             </span>
@@ -124,13 +146,15 @@ onUnmounted(() => {
 
         <div class="sidebar__capture">
           <a-button type="primary" block @click="openCapture">记录事项</a-button>
+          <a-button v-if="isDesktop" block style="margin-top: 8px" href="/desktop/window/focus">打开任务浮窗</a-button>
+          <a-button v-else block style="margin-top: 8px" @click="router.push('/focus')">待办浮窗</a-button>
           <div class="sidebar__hint">⌘ / Ctrl + Shift + K</div>
         </div>
       </aside>
 
-      <main class="app-main">
+      <main class="app-main" :class="{ 'focus-main': route.name === 'focus' }">
         <div class="app-content">
-          <p v-if="isDemo" class="demo-notice">示例工作区 · 可自由体验，进度和记录会保留</p>
+          <p v-if="isDemo && route.name !== 'focus'" class="demo-notice">示例工作区 · 可自由体验，进度和记录会保留</p>
           <router-view />
         </div>
       </main>
@@ -143,6 +167,9 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.widget-shell { min-height: 0; }
+.focus-main { padding: 0; min-height: 0; }
+.focus-main :deep(.app-content) { padding: 0; margin: 0; max-width: none; }
 .demo-notice { margin: 0 0 16px; padding-bottom: 10px; border-bottom: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 12px; }
 .sidebar {
   flex: none;

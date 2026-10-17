@@ -1,5 +1,6 @@
 # Java
 target/
+target-desktop/
 *.class
 *.jar
 !.mvn/wrapper/maven-wrapper.jar

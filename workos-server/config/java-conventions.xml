@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN" "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!-- Google Java Style 中 formatter 不负责的规则；排版由 google-java-format 检查。 -->
+<module name="Checker">
+  <property name="charset" value="UTF-8"/>
+  <module name="TreeWalker">
+    <!-- 项目可读性约束：局部变量声明必须显式写出类型（不是 Google Style 的强制规则）。 -->
+    <module name="RegexpSinglelineJava">
+      <property name="format" value="\bvar\s+[A-Za-z_$][A-Za-z0-9_$]*\s*(=|:|;)"/>
+      <property name="ignoreComments" value="true"/>
+      <property name="message" value="Use an explicit local variable type instead of var."/>
+    </module>
+    <module name="AvoidStarImport"/>
+    <module name="NeedBraces"/>
+    <module name="TypeName"/>
+    <module name="MethodName"/>
+    <module name="MemberName"/>
+    <module name="ConstantName"/>
+    <module name="OneTopLevelClass"/>
+  </module>
+</module>

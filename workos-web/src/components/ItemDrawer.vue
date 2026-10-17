@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import dayjs, { type Dayjs } from 'dayjs'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
 import ItemStateFlow from '@/components/ItemStateFlow.vue'
 import {
@@ -379,6 +379,7 @@ async function closeDrawer() {
   emit('update:open', false)
 }
 onBeforeRouteLeave(() => props.open ? canLeave() : true)
+onBeforeRouteUpdate((to, from) => props.open && to.query.itemId !== from.query.itemId ? canLeave() : true)
 
 async function removeItem() {
   if (!item.value) return

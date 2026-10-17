@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.workos.search.data.mapper.SearchMapper">
+<mapper namespace="com.workos.search.infrastructure.persistence.mapper.SearchMapper">
 
     <!-- 三类事实合并检索；只返回展示需要的字段 -->
     <sql id="unionAll">
@@ -34,7 +34,7 @@
         </if>
     </sql>
 
-    <select id="search" resultType="com.workos.search.model.dto.SearchHitDTO">
+    <select id="search" resultType="com.workos.search.application.readmodel.SearchHitDTO">
         SELECT * FROM (
             <include refid="unionAll"/>
         ) hits

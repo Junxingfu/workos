@@ -211,3 +211,30 @@ export const fetchSettings = (): Promise<Settings> => http.get('/settings')
 
 export const updateSettings = (payload: Partial<Settings>): Promise<Settings> =>
   http.put('/settings', payload)
+
+/* ---------------- 批量维护与关注事项 ---------------- */
+export interface ImportChange { field: string; before: string; after: string }
+export interface ImportRow { row: number; action: string; title: string; changes: ImportChange[]; error?: string }
+export interface ImportPreview { token?: string; rows: ImportRow[]; canApply: boolean; message: string }
+export interface ImportResult { created: number; updated: number; unchanged: number; itemIds: string[] }
+export const exportTaskWorkbook = (template = false) => http.blob('/exchange/tasks', { params: { template }, timeout: 120000 })
+export const previewTaskWorkbook = (file: File): Promise<ImportPreview> => {
+  const form = new FormData(); form.append('file', file)
+  return http.post('/exchange/tasks/preview', form, { headers: { 'Content-Type': undefined }, timeout: 120000 })
+}
+export const applyTaskWorkbook = (token: string): Promise<ImportResult> => http.post('/exchange/tasks/apply', { token }, { timeout: 120000 })
+export interface AttentionNotice { key: string; kind: string; reason: string; itemId: string; title: string; status: ItemStatus; read: boolean; snoozedUntil?: string }
+export const fetchAttention = (): Promise<AttentionNotice[]> => http.get('/attention')
+export const respondAttention = (key: string, action: 'READ' | 'UNREAD' | 'SNOOZE') => http.post('/attention', { key, action })
+
+export interface TaskOverview {
+  todo: number
+  doing: number
+  waiting: number
+  selected: 'TODO' | 'DOING' | 'WAITING'
+  tasks: Item[]
+}
+export const fetchTaskOverview = async (status: TaskOverview['selected']): Promise<TaskOverview> => {
+  const data = await http.get<TaskOverview>('/items/overview', { params: { status } })
+  return { ...data, todo: Number(data.todo), doing: Number(data.doing), waiting: Number(data.waiting) }
+}

@@ -96,6 +96,10 @@ async function openById(id: string) {
   open(item, null)
 }
 
+watch(() => route.query.itemId, (id) => {
+  if (typeof id === 'string' && /^\d+$/.test(id)) void openById(id).catch(fail)
+}, { immediate: true })
+
 async function undoComplete(id: string) {
   const fresh = await fetchItem(id)
   await transition(id, { toStatus: fresh.type === 'NOTE' ? 'INBOX' : 'TODO', version: fresh.version })

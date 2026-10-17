@@ -3,6 +3,12 @@ server:
   shutdown: graceful
 
 spring:
+  flyway:
+    enabled: false
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   application:
     name: workos-server
 

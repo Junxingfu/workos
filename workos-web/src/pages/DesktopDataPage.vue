@@ -3,13 +3,16 @@ import { onMounted, ref } from 'vue'
 import dayjs from 'dayjs'
 import { Modal, message } from 'ant-design-vue'
 import { backupDesktop, fail, fetchDesktopStorage, importDesktop, restoreDesktop, type DesktopStorageInfo } from '@/api'
+import { notifyCaptureCreated } from '@/composables/useCaptureRefresh'
 import PageHeader from '@/components/PageHeader.vue'
 const info = ref<DesktopStorageInfo | null>(null)
 const busy = ref(false)
 const error = ref('')
 const database = ref('workos')
 function backupLabel(name: string) {
-  const kind = name.startsWith('auto-') ? '自动备份' : name.startsWith('manual-') ? '手动备份' : name.startsWith('before-import-') ? '导入前副本' : '恢复前副本'
+  const kind = name.startsWith('auto-') ? '自动备份' : name.startsWith('manual-') ? '手动备份' : name.startsWith('before-excel-') ? 'Excel 导入前副本' : name.startsWith('before-v2-') ? '升级前副本' : name.startsWith('before-import-') ? '导入前副本' : '恢复前副本'
+  const upgrade = name.match(/^before-v2-(\d+)\.db$/)
+  if (upgrade) return `升级前副本 · ${dayjs(Number(upgrade[1])).format('YYYY-MM-DD HH:mm:ss')}`
   const date = name.match(/(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(?:\.\d+)?Z/)
   return date ? `${kind} · ${dayjs(`${date[1]}T${date[2]}:${date[3]}:${date[4]}Z`).format('YYYY-MM-DD HH:mm:ss')}` : name
 }
@@ -20,7 +23,7 @@ async function load() {
 async function run(action: () => Promise<unknown>, tip: string) {
   if (busy.value) return
   busy.value = true
-  try { await action(); message.success(tip); await load(); window.dispatchEvent(new Event('workos:inbox-changed')) }
+  try { await action(); message.success(tip); await load(); notifyCaptureCreated(); window.dispatchEvent(new Event('workos:inbox-changed')) }
   catch (e) { fail(e) } finally { busy.value = false }
 }
 function restore(name: string) {
